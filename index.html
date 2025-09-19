@@ -6,6 +6,7 @@
 <style>
     body {
         font-family: Arial, sans-serif;
+        background-color: #f7f7f7;
         padding: 40px;
         max-width: 800px;
         margin: auto;
@@ -20,25 +21,32 @@
         padding: 0;
     }
     li {
-        margin-bottom: 10px;
+        margin-bottom: 20px;
     }
-    a {
+    li a {
+        display: block;
+        padding: 15px 20px;
+        background-color: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
         color: #0066cc;
         text-decoration: none;
-        font-size: 1.2rem;
+        font-size: 1.1rem;
+        transition: background-color 0.3s, box-shadow 0.3s;
     }
-    a:hover {
-        text-decoration: underline;
+    li a:hover {
+        background-color: #e6f2ff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
 </style>
 </head>
 <body>
 <h1>Interactive Mockups</h1>
-<p>Select a demo below to explore:</p>
 <ul>
-    <li><a href="demo1.html">Demo 1 – Time Display</a></li>
-    <li><a href="demo2.html">Demo 2 – Background Color Toggle</a></li>
-    <li><a href="demo3.html">Demo 3 – Counter</a></li>
+    <li><a href="airlock_prototype.html">Airlock Prototype</a></li>
+    <li><a href="demo1.html">Demo 1: Show Current Time</a></li>
+    <li><a href="demo2.html">Demo 2: Toggle Background Color</a></li>
+    <li><a href="demo3.html">Demo 3: Increment Counter</a></li>
 </ul>
 </body>
 </html>
