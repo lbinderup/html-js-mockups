@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Background Color Toggle</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 40px;
+            transition: background-color 0.5s ease;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Background Color Toggle Demo</h1>
+    <p>Click the button to toggle the background color:</p>
+    <button onclick="toggleColor()">Toggle Color</button>
+    <script>
+        let dark = false;
+        function toggleColor() {
+            dark = !dark;
+            document.body.style.backgroundColor = dark ? '#f0f0f0' : '#ffffff';
+        }
+    </script>
+</body>
+</html>
