@@ -11,17 +11,20 @@
   }
   html,body{height:100%;background:#0f1218;color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
   *{box-sizing:border-box}
-  .wrap{max-width:1000px;margin:24px auto;padding:16px}
+  .wrap{max-width:760px;margin:24px auto;padding:16px}
   h1{font-size:18px;margin:0 0 12px 0;font-weight:600;color:#cfe6ff}
-  .row{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+  .row{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
   .ui{background:#0b0e14;border:1px solid #1c2230;border-radius:12px;padding:12px;box-shadow:var(--shadow)}
   .legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
   .pill{display:flex;gap:8px;align-items:center;background:#121722;border:1px solid #222a38;border-radius:10px;padding:8px 10px}
   .dot{width:10px;height:10px;border-radius:50%}
   .dot.air{background:var(--air)}
   .dot.vac{background:var(--vac);outline:1px solid #3c4556}
-  .dot.match{background:var(--ok)}
-  .dot.mismatch{background:var(--bad)}
+  .dot.ok{background:var(--ok)}
+  .dot.warn{background:var(--warn)}
+  .dot.bad{background:var(--bad)}
+  .square{width:10px;height:10px;border-radius:2px}
+  .square.bad{background:var(--bad)}
   .status{display:grid;gap:6px;margin:8px 0 0 0}
   .status div{background:#121722;border:1px solid #202838;border-radius:10px;padding:8px; min-height: 36px;}
   .hint{color:var(--muted);font-size:12px;margin-top:8px}
@@ -77,7 +80,7 @@
       radial-gradient(120px 40px at 80% 50%, rgba(168,222,240,0.35), transparent 60%);
       filter:blur(2px)}
   /* HUD below preview */
-  .hud{margin-top:8px;background:#0a0f17;border:1px solid #1e2736;border-radius:10px;padding:6px 10px;color:#b9c7d8;font-size:12px;display:flex;flex-wrap:wrap;gap:14px}
+  .hud{background:#0a0f17;border:1px solid #1e2736;border-radius:10px;padding:6px 10px;color:#b9c7d8;font-size:12px;display:flex;flex-wrap:wrap;gap:14px}
   .sep{width:1px;background:#243146}
   .kbd{font:600 11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d8e6f7}
 </style>
@@ -86,43 +89,41 @@
 <div class="wrap">
   <h1>Airlock System — Topdown Prototype v4</h1>
   <div class="row">
-    <div>
-      <div class="board ui" id="board">
-        <div class="grid">
-          <div class="zone room-left air" id="roomLeft">
-            <div class="label">Left Area <span id="leftTag">(Air)</span></div>
-            <div class="btn left-outside" id="btnLeft" title="Cycle airlock"><div class="lamp"></div></div>
-            <div class="btn-safety left-outside" id="safetyLeft" title="Toggle safety interlocks"></div>
-          </div>
-          <div class="door-assembly">
-            <div class="ddoor" id="ddLeft"><div class="panel top"></div><div class="panel bottom"></div></div>
-            <div class="hitbox" id="hitLeft" title="Left Door"></div>
-          </div>
-          <div class="zone airlock" id="airlock">
-            <div class="label">Airlock <span id="lockTag">(Air)</span></div>
-            <div class="tint air" id="lockTint"></div>
-            <div class="rush" id="rush"></div>
-            <div class="btn mid" id="btnMid" title="Cycle airlock"><div class="lamp"></div></div>
-            <div class="btn-safety mid" id="safetyMid" title="Toggle safety interlocks"></div>
-          </div>
-          <div class="door-assembly">
-            <div class="ddoor" id="ddRight"><div class="panel top"></div><div class="panel bottom"></div></div>
-            <div class="hitbox" id="hitRight" title="Right Door"></div>
-          </div>
-          <div class="zone room-right vac" id="roomRight">
-            <div class="label">Right Area <span id="rightTag">(Vacuum)</span></div>
-            <div class="btn right-outside" id="btnRight" title="Cycle airlock"><div class="lamp"></div></div>
-            <div class="btn-safety right-outside" id="safetyRight" title="Toggle safety interlocks"></div>
-          </div>
+    <div class="board ui" id="board">
+      <div class="grid">
+        <div class="zone room-left air" id="roomLeft">
+          <div class="label">Left Area <span id="leftTag">(Air)</span></div>
+          <div class="btn left-outside" id="btnLeft" title="Cycle airlock"><div class="lamp"></div></div>
+          <div class="btn-safety left-outside" id="safetyLeft" title="Toggle safety interlocks"></div>
+        </div>
+        <div class="door-assembly">
+          <div class="ddoor" id="ddLeft"><div class="panel top"></div><div class="panel bottom"></div></div>
+          <div class="hitbox" id="hitLeft" title="Left Door"></div>
+        </div>
+        <div class="zone airlock" id="airlock">
+          <div class="label">Airlock <span id="lockTag">(Air)</span></div>
+          <div class="tint air" id="lockTint"></div>
+          <div class="rush" id="rush"></div>
+          <div class="btn mid" id="btnMid" title="Cycle airlock"><div class="lamp"></div></div>
+          <div class="btn-safety mid" id="safetyMid" title="Toggle safety interlocks"></div>
+        </div>
+        <div class="door-assembly">
+          <div class="ddoor" id="ddRight"><div class="panel top"></div><div class="panel bottom"></div></div>
+          <div class="hitbox" id="hitRight" title="Right Door"></div>
+        </div>
+        <div class="zone room-right vac" id="roomRight">
+          <div class="label">Right Area <span id="rightTag">(Vacuum)</span></div>
+          <div class="btn right-outside" id="btnRight" title="Cycle airlock"><div class="lamp"></div></div>
+          <div class="btn-safety right-outside" id="safetyRight" title="Toggle safety interlocks"></div>
         </div>
       </div>
-      <div class="hud ui" id="hud">
-        <div>Left: <span class="kbd" id="hudLeft">AIR</span></div><div class="sep"></div>
-        <div>Airlock: <span class="kbd" id="hudLock">AIR</span></div><div class="sep"></div>
-        <div>Right: <span class="kbd" id="hudRight">VAC</span></div><div class="sep"></div>
-        <div>Doors: <span class="kbd" id="hudDoors">L:Closed • R:Closed</span></div><div class="sep"></div>
-        <div>Safety: <span class="kbd" id="hudSafety">ACTIVE</span></div>
-      </div>
+    </div>
+    <div class="hud ui" id="hud">
+      <div>Left: <span class="kbd" id="hudLeft">AIR</span></div><div class="sep"></div>
+      <div>Airlock: <span class="kbd" id="hudLock">AIR</span></div><div class="sep"></div>
+      <div>Right: <span class="kbd" id="hudRight">VAC</span></div><div class="sep"></div>
+      <div>Doors: <span class="kbd" id="hudDoors">L:Closed • R:Closed</span></div><div class="sep"></div>
+      <div>Safety: <span class="kbd" id="hudSafety">ACTIVE</span></div>
     </div>
     <div class="ui">
       <div><strong>Rules implemented</strong></div>
@@ -135,11 +136,15 @@
         <li>Safety is disabled via the red square buttons.</li>
         <li>Cycle buttons auto-seal doors, wait, then cycle atmosphere.</li>
       </ul>
+    </div>
+    <div class="ui">
       <div class="legend">
         <div class="pill"><span class="dot air"></span><span>Air</span></div>
         <div class="pill"><span class="dot vac"></span><span>Vacuum</span></div>
-        <div class="pill"><span class="dot match"></span><span>Door can open</span></div>
-        <div class="pill"><span class="dot mismatch"></span><span>Blocked (mismatch)</span></div>
+        <div class="pill"><span class="dot ok"></span><span>Cycle: Safe</span></div>
+        <div class="pill"><span class="dot warn"></span><span>Cycle: Pressurize</span></div>
+        <div class="pill"><span class="dot bad"></span><span>Cycle: Vent</span></div>
+        <div class="pill"><span class="square bad"></span><span>Safety Override</span></div>
       </div>
       <div class="status"><div id="msg">Ready.</div></div>
       <div class="hint">Disabling safety interlocks allows forced entry but causes pressure equalization.</div>
