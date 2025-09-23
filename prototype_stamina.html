@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>2D Sidescroller – Mech/Ball + Shared Resource</title>
+<style>
+  :root { --w:1100px; --h:620px; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; }
+  body { background:#0a0f1a; color:#e6e6e6; margin:0; display:flex; align-items:center; justify-content:center; height:100vh; }
+  .frame { position:relative; width:var(--w); height:var(--h); }
+  canvas { width:var(--w); height:var(--h); border:1px solid #2b3756; border-radius:14px; background:#000; box-shadow:0 8px 24px rgba(0,0,0,.5); display:block; }
+  
+  /* --- HUD Changes --- */
+  .hud {
+    position:absolute;
+    left: 50%; /* Center horizontally */
+    bottom: 24px; /* Position from bottom */
+    transform: translateX(-50%); /* Fine-tune horizontal centering */
+    width: 360px; /* New width */
+    user-select:none;
+  }
+  .label { font-size:12px; color:#cfd5e6; margin-bottom:4px; opacity:.75; text-align: center; }
+  .bar { width:100%; height:12px; background:#1f2a44; border-radius:999px; overflow:hidden; }
+  .fill { height:100%; background:#44aaff; transition:width 80ms linear, background-color 100ms linear; } /* Blue color */
+  .small { font-size:10px; color:#cfd5e6; margin-top:4px; opacity:.7; text-align: center; }
+  
+  /* Red flash animation */
+  @keyframes flash-red {
+    0%, 100% { background-color: #ff4444; }
+    50% { background-color: #ff8888; }
+  }
+  .error-flash .fill {
+    animation: flash-red 0.3s ease-out;
+  }
+
+  .legend { position:absolute; right:16px; top:14px; font-size:11px; color:#d0d6e8; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 12px; line-height:1.25; user-select:none; }
+  .transform { position:absolute; left:50%; bottom:24px; transform:translateX(-50%); width:360px; user-select:none; }
+  .transform .bar { height:12px; }
+  .transform .fill { background:#44c6ff; }
+  .charge { position:absolute; transform:translate(-50%,-170%); width:180px; pointer-events:none; }
+  .charge .bar { height:8px; }
+  .charge .fill { background:#ffd45f; }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <canvas id="cvs" width="1100" height="620"></canvas>
+
+    <div id="hud" class="hud">
+      <div class="label">Stamina</div>
+      <div id="resBar" class="bar"><div id="resFill" class="fill" style="width:100%"></div></div>
+      <div id="modeTxt" class="small">MECH • 100%</div>
+    </div>
+
+    <div id="legend" class="legend">
+      <div>Move: A/D or ←/→</div>
+      <div>Jump: Space (tap = jump on release)</div>
+      <div>Charge Jump: Hold Space 2s (Ball only, auto)</div>
+      <div>Dash: Shift (25% resource, need ≥20%)</div>
+      <div>Transform to Ball: Hold Ctrl 2s</div>
+      <div>Back to Mech: Tap Ctrl</div>
+      <div>Ground Slam: LMB hold in air (Ball only)</div>
+    </div>
+
+    <div id="transformWrap" class="transform" style="display:none">
+      <div class="label" style="text-align:center">Transform to Ball</div>
+      <div class="bar"><div id="xformFill" class="fill" style="width:0%;background:#44c6ff"></div></div>
+    </div>
+
+    <div id="chargeWrap" class="charge" style="display:none; left:0; top:0;">
+      <div class="bar"><div id="chargeFill" class="fill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ======== Tunables ========
+  const CONFIG = {
+    WORLD_WIDTH: 5000,
+    WORLD_HEIGHT: 800,
+    VIEW_WIDTH: 1100,
+    VIEW_HEIGHT: 620,
+    GROUND_Y: 560,
+    GRAVITY: 2400,
+    FRICTION_GROUND_MECH: 0.000015,
+    FRICTION_GROUND_BALL: 0.00001,
+    AIR_DRAG: 0.0002,
+    WALK_ACCEL: 5500,
+    WALK_MAX_SPEED: 520,
+    ROLL_ACCEL: 4200,
+    ROLL_MAX_SPEED: 740,
+    JUMP_VELOCITY: 920,
+    DASH_SPEED: 1400,
+    DASH_TIME: 0.28, /* --- Increased Dash Time --- */
+    DASH_RESOURCE_COST: 25,
+    JUMP_RESOURCE_COST: 20,
+    BALL_LAUNCH_COST: 75,
+    RESOURCE_MAX: 100,
+    RESOURCE_REGEN_IDLE: 22,
+    RESOURCE_REGEN_MOVING: 11,
+    RESOURCE_MIN_FOR_DASH: 20,
+    MAX_JUMPS: 3,
+    CTRL_HOLD_TO_BALL: 2.0,
+    SLAM_DRAIN_PER_SEC: 35,
+    SLAM_MAX_DOWN_SPEED: 2000,
+    SLAM_CHARGE_MIN_HOLD: 0.2,
+    SLAM_CHARGE_SPEED_THRESHOLD: 0.6,
+    STANDARD_JUMP_TAP_WINDOW: 0.30, /* --- Increased Tap Window --- */
+    CHARGE_JUMP_HOLD: 2.0,
+    CAMERA_LERP: 0.12,
+  };
+
+  // ======== State ========
+  const state = {
+    player: {
+      x: 200, y: CONFIG.GROUND_Y, vx: 0, vy: 0,
+      width: 46, height: 46, facing: 1, grounded: true,
+      jumpsUsed: 0, mode: "MECH",
+      dashingUntil: 0,
+      slamHolding: false, slamCharged: false, slamHoldTime: 0,
+    },
+    camera: { x: 0, y: 0, shakeT: 0, shakeAmt: 0 },
+    world: { obstacles: [] },
+    particles: [],
+    resource: CONFIG.RESOURCE_MAX,
+    ctrlHoldTime: 0,
+    transformProgress: 0,
+    chargeTapWindow: CONFIG.STANDARD_JUMP_TAP_WINDOW,
+    lastDashNow: -Infinity,
+  };
+
+  for (let i = 0; i < 20; i++) state.world.obstacles.push({ x: 400 + i * 220, y: CONFIG.GROUND_Y - 60, w: 40, h: 60 });
+
+  // ======== DOM refs ========
+  const cvs = document.getElementById('cvs');
+  const ctx = cvs.getContext('2d');
+  const hud = document.getElementById('hud');
+  const resFill = document.getElementById('resFill');
+  const modeTxt = document.getElementById('modeTxt');
+  const transformWrap = document.getElementById('transformWrap');
+  const xformFill = document.getElementById('xformFill');
+  const chargeWrap = document.getElementById('chargeWrap');
+  const chargeFill = document.getElementById('chargeFill');
+
+  // ======== Helpers ========
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  const nowMs = ()=>performance.now();
+
+  function worldToScreen(wx, wy) { return { x: Math.round(wx - state.camera.x), y: Math.round(wy - state.camera.y) }; }
+  
+  // --- New function to flash the resource bar ---
+  let isFlashing = false;
+  function flashStaminaBar() {
+    if (isFlashing) return;
+    isFlashing = true;
+    hud.classList.add('error-flash');
+    setTimeout(() => {
+      hud.classList.remove('error-flash');
+      isFlashing = false;
+    }, 300);
+  }
+
+  // ======== Input ========
+  const input = {
+    left:false, right:false, jumpHeld:false, jumpPressedAt:0,
+    ctrlHeld:false, ctrlHeldAt:0,
+    _ctrlReleased:false, _ctrlReleasedAt:0,
+    _jumpReleased:false, _jumpReleasedAt:0,
+    _dashQueued:false, shiftPressedAt:0,
+    mouseDown:false,
+  };
+
+  window.addEventListener('keydown', e=>{
+    if (e.key === 'a' || e.key === 'ArrowLeft') input.left = true;
+    if (e.key === 'd' || e.key === 'ArrowRight') input.right = true;
+    if (e.code === 'Space') {
+      if (!input.jumpHeld) input.jumpPressedAt = nowMs();
+      input.jumpHeld = true;
+    }
+    if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
+      if (!input.ctrlHeld) input.ctrlHeldAt = nowMs();
+      input.ctrlHeld = true;
+    }
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+      input._dashQueued = true;
+      input.shiftPressedAt = nowMs();
+    }
+  });
+  window.addEventListener('keyup', e=>{
+    if (e.key === 'a' || e.key === 'ArrowLeft') input.left = false;
+    if (e.key === 'd' || e.key === 'ArrowRight') input.right = false;
+    if (e.code === 'Space') {
+      input.jumpHeld = false;
+      input._jumpReleased = true;
+      input._jumpReleasedAt = nowMs();
+    }
+    if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
+      input.ctrlHeld = false;
+      input._ctrlReleased = true;
+      input._ctrlReleasedAt = nowMs();
+    }
+  });
+  window.addEventListener('mousedown', e=>{ if (e.button===0) input.mouseDown = true; });
+  window.addEventListener('mouseup', e=>{ if (e.button===0) input.mouseDown = false; });
+
+  // ======== Mechanics ========
+  function tryStandardJump() {
+    const p = state.player;
+    if (state.resource < CONFIG.JUMP_RESOURCE_COST) {
+      flashStaminaBar(); // --- Flash on fail ---
+      return;
+    }
+    if (p.grounded || p.jumpsUsed < CONFIG.MAX_JUMPS - 1) {
+      p.vy = -CONFIG.JUMP_VELOCITY;
+      p.grounded = false;
+      p.jumpsUsed += 1;
+      state.resource = clamp(state.resource - CONFIG.JUMP_RESOURCE_COST, 0, CONFIG.RESOURCE_MAX);
+    }
+  }
+
+  function tryBallLaunch() {
+    if (state.player.mode !== 'BALL') return;
+    if (state.resource < CONFIG.BALL_LAUNCH_COST) {
+      flashStaminaBar(); // --- Flash on fail ---
+      return;
+    }
+    state.resource = clamp(state.resource - CONFIG.BALL_LAUNCH_COST, 0, CONFIG.RESOURCE_MAX);
+    state.player.vy = -CONFIG.JUMP_VELOCITY * 1.75;
+    state.player.grounded = false;
+  }
+
+  function tryDash() {
+    const p = state.player;
+    if (state.resource < CONFIG.RESOURCE_MIN_FOR_DASH) {
+      flashStaminaBar(); // --- Flash on fail ---
+      return;
+    }
+    state.resource = clamp(state.resource - CONFIG.DASH_RESOURCE_COST, 0, CONFIG.RESOURCE_MAX);
+    const dir = p.facing || 1;
+    p.vx = CONFIG.DASH_SPEED * dir;
+    p.dashingUntil = nowMs() + CONFIG.DASH_TIME * 1000;
+    state.lastDashNow = nowMs();
+  }
+
+  function spawnSlamExplosion(x, groundY) {
+    for (let i=0;i<80;i++){
+      const ang = (Math.PI*2*i)/80;
+      const spd = 200 + Math.random()*600;
+      state.particles.push({
+        x, y: groundY - 4,
+        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd*0.35,
+        life: 0.6 + Math.random()*0.4, age:0,
+        color: {r:255,g:80,b:80,a:1}, size: 2 + Math.random()*3
+      });
+    }
+    state.camera.shakeT = 0.35; state.camera.shakeAmt = 14;
+  }
+
+  function stepParticles(dt) {
+    const g = CONFIG.GRAVITY * 0.4;
+    const out = [];
+    for (const p of state.particles) {
+      p.age += dt; if (p.age > p.life) continue;
+      p.vy += g*dt; p.x += p.vx*dt; p.y += p.vy*dt;
+      out.push(p);
+    }
+    state.particles = out;
+  }
+
+  function handleTransform(dt) {
+    const p = state.player;
+    if (p.mode === 'MECH') {
+      if (input.ctrlHeld) {
+        state.ctrlHoldTime += dt;
+        state.transformProgress = clamp(state.ctrlHoldTime / CONFIG.CTRL_HOLD_TO_BALL, 0, 1);
+        if (state.transformProgress >= 1) {
+          p.mode = 'BALL'; p.width = 40; p.height = 40;
+          state.ctrlHoldTime = 0; state.transformProgress = 0;
+        }
+      } else {
+        state.ctrlHoldTime = 0; state.transformProgress = 0;
+      }
+    } else { // In BALL mode
+      if (input._ctrlReleased) {
+        const holdDuration = (input._ctrlReleasedAt - input.ctrlHeldAt) / 1000;
+        if (holdDuration < 0.5) {
+          p.mode = 'MECH'; p.width = 46; p.height = 46;
+          p.slamHolding = false; p.slamCharged = false; p.slamHoldTime = 0;
+        }
+      }
+      state.ctrlHoldTime = 0; state.transformProgress = 0;
+    }
+
+    // UI
+    if (p.mode === 'MECH' && input.ctrlHeld && state.transformProgress > 0) {
+      transformWrap.style.display = '';
+      xformFill.style.width = (state.transformProgress * 100).toFixed(3) + '%';
+    } else {
+      transformWrap.style.display = 'none';
+    }
+  }
+
+  // ======== Loop ========
+  let last = nowMs();
+  function frame() {
+    const t = nowMs();
+    const dt = Math.min((t - last)/1000, 0.05);
+    last = t;
+
+    const p = state.player;
+
+    // Transform logic should only show its own UI if it's active
+    if (p.mode === 'MECH' && input.ctrlHeld) {
+        hud.style.display = 'none'; // Hide stamina while transforming
+        transformWrap.style.display = '';
+    } else {
+        hud.style.display = ''; // Show stamina
+        transformWrap.style.display = 'none';
+    }
+    handleTransform(dt);
+
+    // Gravity
+    p.vy += CONFIG.GRAVITY * dt;
+
+    // Horizontal input
+    let accel = 0;
+    if (input.left) { accel -= 1; p.facing = -1; }
+    if (input.right){ accel += 1; p.facing =  1; }
+    const isBall = p.mode === 'BALL';
+    const onGroundPrev = p.grounded;
+    const maxH = isBall ? CONFIG.ROLL_MAX_SPEED : CONFIG.WALK_MAX_SPEED;
+    const aH   = isBall ? CONFIG.ROLL_ACCEL    : CONFIG.WALK_ACCEL;
+    p.vx += aH * accel * dt;
+    p.vx = clamp(p.vx, -maxH, maxH);
+
+    // Friction / drag
+    if (p.grounded && accel === 0) {
+      const fr = isBall ? CONFIG.FRICTION_GROUND_BALL : CONFIG.FRICTION_GROUND_MECH;
+      p.vx *= Math.pow(1 - fr, dt * 1000);
+    } else if (!p.grounded && accel === 0) {
+      p.vx *= Math.pow(1 - CONFIG.AIR_DRAG, dt * 1000);
+    }
+
+    // Jump logic
+    const heldTime = input.jumpHeld ? (t - input.jumpPressedAt)/1000 : 0;
+    const withinTapWindow = heldTime > 0 && heldTime <= state.chargeTapWindow;
+
+    // Show charge bar if held beyond tap window and BALL mode
+    if (input.jumpHeld && heldTime > state.chargeTapWindow && isBall) {
+      chargeWrap.style.display = '';
+      chargeFill.style.width = (clamp(heldTime / CONFIG.CHARGE_JUMP_HOLD, 0, 1) * 100).toFixed(2) + '%';
+    } else {
+      chargeWrap.style.display = 'none';
+    }
+
+    // Standard jump on release within tap window
+    if (input._jumpReleased) {
+      const relHeld = (input._jumpReleasedAt - (input.jumpPressedAt || input._jumpReleasedAt))/1000;
+      if (relHeld <= state.chargeTapWindow) {
+        tryStandardJump();
+      } // else: released during charge state => cancel
+    }
+
+    // Auto ball launch at 2s
+    if (isBall && input.jumpHeld && heldTime >= CONFIG.CHARGE_JUMP_HOLD) {
+      tryBallLaunch();
+      input.jumpHeld = false; // prevent repeats until release
+    }
+
+    // Dash
+    if (input._dashQueued) tryDash();
+
+    // Ground slam (Ball only, in air, LMB hold)
+    if (isBall && !p.grounded && input.mouseDown) {
+      p.slamHolding = true;
+      const drain = CONFIG.SLAM_DRAIN_PER_SEC * dt;
+      if (state.resource > 0) {
+        state.resource = clamp(state.resource - drain, 0, CONFIG.RESOURCE_MAX);
+        p.vy = Math.min(p.vy + 2600*dt, CONFIG.SLAM_MAX_DOWN_SPEED);
+        const nearMax = Math.abs(p.vy) >= CONFIG.SLAM_MAX_DOWN_SPEED * CONFIG.SLAM_CHARGE_SPEED_THRESHOLD;
+        if (nearMax) p.slamHoldTime += dt; else p.slamHoldTime = 0;
+        if (p.slamHoldTime >= CONFIG.SLAM_CHARGE_MIN_HOLD) p.slamCharged = true;
+      }
+    } else {
+      if (!input.mouseDown) p.slamHolding = false;
+    }
+
+    // Integrate
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    // Bounds
+    p.x = clamp(p.x, 30, CONFIG.WORLD_WIDTH - 30);
+
+    // Ground collision and slam impact
+    const wasGrounded = p.grounded;
+    if (p.y >= CONFIG.GROUND_Y) {
+      if (!p.grounded && p.vy > 400) {
+        if (isBall && p.slamCharged) spawnSlamExplosion(p.x, CONFIG.GROUND_Y);
+      }
+      p.y = CONFIG.GROUND_Y; p.vy = 0; p.grounded = true; p.jumpsUsed = 0; p.slamHolding = false; p.slamHoldTime = 0; p.slamCharged = false;
+    } else {
+      p.grounded = false;
+    }
+
+    // Simple obstacles (top land + side push)
+    for (const ob of state.world.obstacles) {
+      const px1 = p.x - p.width/2, px2 = p.x + p.width/2;
+      const py1 = p.y - p.height/2, py2 = p.y + p.height/2;
+      const ox1 = ob.x, ox2 = ob.x + ob.w;
+      const oy1 = ob.y, oy2 = ob.y + ob.h;
+      if (px2 > ox1 && px1 < ox2 && py2 > oy1 && py1 < oy2) {
+        if (p.vy > 0 && py1 < oy1 && py2 - p.vy*dt <= oy1) {
+          p.y = oy1 - p.height/2; p.vy = 0; p.grounded = true; p.jumpsUsed = 0; p.slamHolding = false; p.slamHoldTime = 0; p.slamCharged = false;
+        } else {
+          if (p.x < ox1) p.x = ox1 - p.width/2;
+          if (p.x > ox2) p.x = ox2 + p.width/2;
+          p.vx = 0;
+        }
+      }
+    }
+
+    // Resource regen
+    const movingOnGround = wasGrounded && Math.abs(p.vx) > 40 && !p.slamHolding && (t - state.lastDashNow) > 180;
+    const regenRate = movingOnGround ? CONFIG.RESOURCE_REGEN_MOVING : CONFIG.RESOURCE_REGEN_IDLE;
+    if (!p.slamHolding) state.resource = clamp(state.resource + regenRate * dt, 0, CONFIG.RESOURCE_MAX);
+
+    // UI sync
+    resFill.style.width = state.resource.toFixed(0) + '%';
+    modeTxt.textContent = `${p.mode} • ${state.resource.toFixed(0)}%`;
+
+    // Camera
+    const targetX = clamp(p.x - CONFIG.VIEW_WIDTH * 0.45, 0, CONFIG.WORLD_WIDTH - CONFIG.VIEW_WIDTH);
+    state.camera.x = lerp(state.camera.x, targetX, CONFIG.CAMERA_LERP);
+    state.camera.y = 0;
+    if (state.camera.shakeT > 0) {
+      state.camera.shakeT -= 1/60;
+      const amt = state.camera.shakeAmt * state.camera.shakeT;
+      state.camera.x += (Math.random()-0.5)*amt;
+      state.camera.y += (Math.random()-0.5)*amt;
+    }
+
+    // Render
+    render();
+
+    // Charge bar position follow
+    const scr = worldToScreen(p.x, p.y - p.height);
+    chargeWrap.style.left = scr.x + 'px';
+    chargeWrap.style.top  = scr.y + 'px';
+
+    // reset edge triggers
+    input._jumpReleased = false;
+    input._ctrlReleased = false;
+    input._dashQueued = false;
+
+    requestAnimationFrame(frame);
+  }
+
+  function render() {
+    const W = CONFIG.VIEW_WIDTH, H = CONFIG.VIEW_HEIGHT;
+    ctx.clearRect(0,0,W,H);
+    // Background
+    ctx.fillStyle = '#0b1020'; ctx.fillRect(0,0,W,H);
+    for (let i=0;i<5;i++){
+      const y = 80 + i*90;
+      ctx.fillStyle = `rgba(255,255,255,${0.02 + i*0.01})`;
+      const px = -((state.camera.x * (0.2 + i*0.1)) % (W + 200));
+      ctx.fillRect(px - 200, y, W + 400, 2);
+    }
+    // Ground
+    const gScreen = worldToScreen(0, CONFIG.GROUND_Y + 20);
+    ctx.fillStyle = '#1c243a'; ctx.fillRect(0, gScreen.y, W, H - gScreen.y);
+    ctx.strokeStyle = '#3a4b6f'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    const gy = worldToScreen(0, CONFIG.GROUND_Y).y + 1;
+    ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+
+    // Obstacles
+    for (const ob of state.world.obstacles) {
+      const p = worldToScreen(ob.x, ob.y);
+      ctx.fillStyle = '#293656';
+      ctx.fillRect(p.x, p.y, ob.w, ob.h);
+    }
+
+    // Player
+    const pl = state.player;
+    const ps = worldToScreen(pl.x - pl.width/2, pl.y - pl.height/2);
+    if (pl.mode === 'MECH') {
+      ctx.fillStyle = '#6bd1ff';
+      ctx.fillRect(ps.x, ps.y, pl.width, pl.height);
+      ctx.fillStyle = '#0b1020';
+      ctx.fillRect(ps.x + (pl.facing===1?22:8), ps.y + 14, 16, 8);
+    } else {
+      ctx.beginPath(); ctx.arc(ps.x + pl.width/2, ps.y + pl.height/2, pl.width/2, 0, Math.PI*2);
+      ctx.fillStyle = pl.slamCharged ? '#ff4040' : '#ffd36b';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    // Particles
+    stepParticles(1/60);
+    for (const p of state.particles) {
+      const sp = worldToScreen(p.x, p.y);
+      const alpha = 1 - p.age / p.life;
+      ctx.fillStyle = `rgba(${p.color.r},${p.color.g},${p.color.b},${alpha})`;
+      ctx.fillRect(sp.x, sp.y, p.size, p.size);
+    }
+
+    // Dash trail
+    if (nowMs() < pl.dashingUntil) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 3; ctx.beginPath();
+      const tail = worldToScreen(pl.x - pl.facing*40, pl.y);
+      const nose = worldToScreen(pl.x + pl.facing*20, pl.y);
+      ctx.moveTo(tail.x, tail.y); ctx.lineTo(nose.x, nose.y); ctx.stroke();
+    }
+  }
+
+  // Start
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
