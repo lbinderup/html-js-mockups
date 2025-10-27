@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ability Icon Mockup – Reactive</title>
+  <style>
+    :root { --size: 240px; }
+    html, body { height: 100%; margin: 0; background: #0b0b0f; display: grid; place-items: center; }
+    .wrap { position: relative; width: var(--size); height: var(--size); }
+    .flash {
+      position: absolute; inset: -16px; background: white; opacity: 0; filter: blur(8px);
+      transition: opacity 120ms ease;
+      border-radius: 24px;
+      pointer-events: none;
+    }
+    svg { width: 100%; height: 100%; display: block; }
+    .hint { position: absolute; bottom: -28px; width: 100%; text-align: center; font: 12px/1.2 system-ui, sans-serif; color: #9aa0a6; user-select: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="wrap">
+    <div class="flash" id="flash"></div>
+
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <!-- Clip from bottom for the solid refill layer -->
+      <clipPath id="refillClip">
+        <rect id="refillRect" x="0" y="100" width="100" height="0" />
+      </clipPath>
+
+      <!-- Combined path: hexagon with vertically centered explosion cutout (evenodd) -->
+      <defs>
+        <!-- Explosion moved up ~4 units for visual centering -->
+        <path id="hexExplosion" d="M50 5 L93 27.5 L93 72.5 L50 95 L7 72.5 L7 27.5 Z
+           M50 26 L55 41 L70 36 L60 51 L70 66 L55 61 L50 76 L45 61 L30 66 L40 51 L30 36 L45 41 Z"
+           fill-rule="evenodd" clip-rule="evenodd" />
+      </defs>
+
+      <!-- Low-opacity background layer (persistent 25% once drained). No stroke. -->
+      <use id="bg25" href="#hexExplosion" fill="white" opacity="1" />
+
+      <!-- Solid white refill layer, revealed from bottom by clip. No stroke. -->
+      <use id="solidRefill" href="#hexExplosion" fill="white" clip-path="url(#refillClip)" />
+    </svg>
+    <div class="hint">press Space</div>
+  </div>
+
+  <script>
+    const refillRect = document.getElementById('refillRect');
+    const bg25 = document.getElementById('bg25');
+    const solidRefill = document.getElementById('solidRefill');
+    const flash = document.getElementById('flash');
+    const wrap = document.getElementById('wrap');
+
+    const DRAIN_TIME = 150;           // ms to drain to 25%
+    const REFILL_TIME = 4000;         // ms to refill solid from bottom (was 2000)
+    const READY_FLASH_OPACITY = 0.8;  // white flash intensity
+
+    let busy = false;
+    let state = 'ready'; // 'ready' | 'drained' | 'refilling'
+    let flashTimeout = null;
+
+    function setRefillProgress(p) {
+      const height = 100 * p;
+      const y = 100 - height;
+      refillRect.setAttribute('y', y.toFixed(3));
+      refillRect.setAttribute('height', height.toFixed(3));
+    }
+
+    function drainTo25() {
+      return new Promise((resolve) => {
+        const start = performance.now();
+        const startOpacity = parseFloat(bg25.getAttribute('opacity')) || 1;
+        const endOpacity = 0.25;
+        function step(now) {
+          const t = Math.min(1, (now - start) / DRAIN_TIME);
+          const o = startOpacity + (endOpacity - startOpacity) * t;
+          bg25.setAttribute('opacity', o.toFixed(3));
+          if (t < 1) requestAnimationFrame(step); else resolve();
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    function animateRefill() {
+      return new Promise((resolve) => {
+        const start = performance.now();
+        function step(now) {
+          const t = Math.min(1, (now - start) / REFILL_TIME);
+          setRefillProgress(t);
+          if (t < 1) requestAnimationFrame(step); else resolve();
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    function flashPulse(color, opacity, hold = 100) {
+      if (flashTimeout) clearTimeout(flashTimeout);
+      flash.style.background = color;
+      flash.style.opacity = opacity;
+      flashTimeout = setTimeout(() => { flash.style.opacity = 0; }, hold);
+    }
+
+    function doReadyFlash() { flashPulse('white', READY_FLASH_OPACITY, 100); }
+
+    function pulseFillRed() {
+      const oldBg = bg25.getAttribute('fill') || 'white';
+      const oldSolid = solidRefill.getAttribute('fill') || 'white';
+      bg25.setAttribute('fill', '#ff2b2b');
+      solidRefill.setAttribute('fill', '#ff2b2b');
+      setTimeout(() => {
+        bg25.setAttribute('fill', oldBg);
+        solidRefill.setAttribute('fill', oldSolid);
+      }, 140);
+    }
+
+    async function triggerCycle() {
+      if (busy) return; // animation in progress
+      busy = true;
+
+      if (state === 'ready') {
+        await drainTo25();
+        setRefillProgress(0);
+        state = 'drained';
+        state = 'refilling';
+        await animateRefill();
+        bg25.setAttribute('opacity', '1');
+        state = 'ready';
+        doReadyFlash();
+      }
+
+      busy = false;
+    }
+
+    function attemptActivate() {
+      if (state !== 'ready' || busy) {
+        pulseFillRed();
+        return;
+      }
+      triggerCycle();
+    }
+
+    // Initialize graphic to fully filled
+    setRefillProgress(1);
+
+    // Keyboard: Space to trigger
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        attemptActivate();
+      }
+    });
+
+    // Click also triggers
+    wrap.addEventListener('click', attemptActivate);
+  </script>
+</body>
+</html>
