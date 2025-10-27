@@ -13,7 +13,7 @@
     .icon { position: absolute; inset: 0; display: grid; place-items: center; transform-origin: 50% 50%; }
 
     /* Press animation: shrink to 90% for 0.25s then back */
-    .icon.pressing { animation: pressScale 100ms ease-in-out; }
+    .icon.pressing { animation: pressScale 150ms ease-in-out; }
     @keyframes pressScale {
       0% { transform: scale(1); }
       50% { transform: scale(0.9); }
@@ -79,6 +79,51 @@
     let busy = false;
     let state = 'ready'; // 'ready' | 'drained' | 'refilling'
 
+    // --- Simple WebAudio Synth ---
+    let audioCtx = null;
+    let master = null;
+
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      master = audioCtx.createGain();
+      master.gain.value = 0.12; // overall volume
+      master.connect(audioCtx.destination);
+    }
+
+    function beep({freq=440, type='sine', dur=0.12, attack=0.002, release=0.08, when=0}) {
+      const t0 = (audioCtx ? audioCtx.currentTime : 0) + when;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(1, t0 + attack);
+      g.gain.linearRampToValueAtTime(0, t0 + dur);
+      osc.connect(g).connect(master);
+      osc.start(t0);
+      osc.stop(t0 + dur + release);
+    }
+
+    function clickSound() {
+      // short high click + lower thump
+      beep({freq: 1200, type: 'square', dur: 0.04, attack: 0.001, release: 0.03});
+      beep({freq: 240, type: 'sine',   dur: 0.06, attack: 0.001, release: 0.04, when: 0.0});
+    }
+
+    function errorSound() {
+      // two quick low beeps
+      beep({freq: 220, type: 'sawtooth', dur: 0.06});
+      beep({freq: 170, type: 'sawtooth', dur: 0.06, when: 0.08});
+    }
+
+    function readyChime() {
+      // simple arpeggio C5-E5-G5
+      beep({freq: 523.25, type: 'triangle', dur: 0.10});
+      beep({freq: 659.25, type: 'triangle', dur: 0.10, when: 0.09});
+      beep({freq: 783.99, type: 'triangle', dur: 0.12, when: 0.18});
+    }
+
     function setRefillProgress(p) {
       const height = 100 * p;
       const y = 100 - height;
@@ -126,8 +171,7 @@
 
     function animatePress() {
       icon.classList.remove('pressing');
-      // restart animation by forcing reflow
-      void icon.offsetWidth;
+      void icon.offsetWidth; // restart animation
       icon.classList.add('pressing');
     }
 
@@ -154,6 +198,8 @@
       busy = true;
 
       if (state === 'ready') {
+        initAudio();
+        clickSound();
         animatePress();
         await drainTo25();
         setRefillProgress(0);
@@ -163,14 +209,17 @@
         bg25.setAttribute('opacity', '1');
         state = 'ready';
         spawnReadyRipple();
+        readyChime();
       }
 
       busy = false;
     }
 
     function attemptActivate() {
+      initAudio();
       if (state !== 'ready' || busy) {
         pulseFillRed();
+        errorSound();
         return;
       }
       triggerCycle();
