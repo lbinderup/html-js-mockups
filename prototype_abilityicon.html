@@ -8,57 +8,76 @@
     :root { --size: 240px; }
     html, body { height: 100%; margin: 0; background: #0b0b0f; display: grid; place-items: center; }
     .wrap { position: relative; width: var(--size); height: var(--size); }
-    .flash {
-      position: absolute; inset: -16px; background: white; opacity: 0; filter: blur(8px);
-      transition: opacity 120ms ease;
-      border-radius: 24px;
-      pointer-events: none;
+
+    /* Main icon holder that we scale on activate */
+    .icon { position: absolute; inset: 0; display: grid; place-items: center; transform-origin: 50% 50%; }
+
+    /* Press animation: shrink to 90% for 0.25s then back */
+    .icon.pressing { animation: pressScale 250ms ease-in-out; }
+    @keyframes pressScale {
+      0% { transform: scale(1); }
+      50% { transform: scale(0.9); }
+      100% { transform: scale(1); }
     }
+
+    /* Ready ripple spawned on recharge completion */
+    .ripple { position: absolute; inset: 0; pointer-events: none; opacity: 0.85; transform-origin: 50% 50%; }
+    .ripple.animate { animation: ripple 360ms ease-out forwards; }
+    @keyframes ripple {
+      0%   { transform: scale(1);   opacity: 0.85; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+
     svg { width: 100%; height: 100%; display: block; }
     .hint { position: absolute; bottom: -28px; width: 100%; text-align: center; font: 12px/1.2 system-ui, sans-serif; color: #9aa0a6; user-select: none; }
   </style>
 </head>
 <body>
   <div class="wrap" id="wrap">
-    <div class="flash" id="flash"></div>
+    <!-- Ripple container; we inject temporary SVGs here -->
+    <div id="ripples"></div>
 
-    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <!-- Clip from bottom for the solid refill layer -->
-      <clipPath id="refillClip">
-        <rect id="refillRect" x="0" y="100" width="100" height="0" />
-      </clipPath>
+    <div class="icon" id="icon">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <!-- Clip from bottom for the solid refill layer -->
+        <clipPath id="refillClip">
+          <rect id="refillRect" x="0" y="100" width="100" height="0" />
+        </clipPath>
 
-      <!-- Combined path: hexagon with vertically centered explosion cutout (evenodd) -->
-      <defs>
-        <!-- Explosion moved up ~4 units for visual centering -->
-        <path id="hexExplosion" d="M50 5 L93 27.5 L93 72.5 L50 95 L7 72.5 L7 27.5 Z
-           M50 26 L55 41 L70 36 L60 51 L70 66 L55 61 L50 76 L45 61 L30 66 L40 51 L30 36 L45 41 Z"
-           fill-rule="evenodd" clip-rule="evenodd" />
-      </defs>
+        <!-- Combined path: hexagon with vertically centered explosion cutout (evenodd) -->
+        <defs>
+          <!-- Explosion moved up ~4 units for visual centering -->
+          <path id="hexExplosion" d="M50 5 L93 27.5 L93 72.5 L50 95 L7 72.5 L7 27.5 Z
+             M50 26 L55 41 L70 36 L60 51 L70 66 L55 61 L50 76 L45 61 L30 66 L40 51 L30 36 L45 41 Z"
+             fill-rule="evenodd" clip-rule="evenodd" />
+        </defs>
 
-      <!-- Low-opacity background layer (persistent 25% once drained). No stroke. -->
-      <use id="bg25" href="#hexExplosion" fill="white" opacity="1" />
+        <!-- Low-opacity background layer (persistent 25% once drained). No stroke. -->
+        <use id="bg25" href="#hexExplosion" fill="white" opacity="1" />
 
-      <!-- Solid white refill layer, revealed from bottom by clip. No stroke. -->
-      <use id="solidRefill" href="#hexExplosion" fill="white" clip-path="url(#refillClip)" />
-    </svg>
+        <!-- Solid white refill layer, revealed from bottom by clip. No stroke. -->
+        <use id="solidRefill" href="#hexExplosion" fill="white" clip-path="url(#refillClip)" />
+      </svg>
+    </div>
+
     <div class="hint">press Space</div>
   </div>
 
   <script>
-    const refillRect = document.getElementById('refillRect');
-    const bg25 = document.getElementById('bg25');
-    const solidRefill = document.getElementById('solidRefill');
-    const flash = document.getElementById('flash');
     const wrap = document.getElementById('wrap');
+    const icon = document.getElementById('icon');
+    const ripples = document.getElementById('ripples');
+
+    // Access elements inside the SVG
+    const refillRect = document.getElementById('refillRect');
+    const bg25       = document.getElementById('bg25');
+    const solidRefill= document.getElementById('solidRefill');
 
     const DRAIN_TIME = 150;           // ms to drain to 25%
-    const REFILL_TIME = 4000;         // ms to refill solid from bottom (was 2000)
-    const READY_FLASH_OPACITY = 0.8;  // white flash intensity
+    const REFILL_TIME = 4000;         // ms to refill solid from bottom
 
     let busy = false;
     let state = 'ready'; // 'ready' | 'drained' | 'refilling'
-    let flashTimeout = null;
 
     function setRefillProgress(p) {
       const height = 100 * p;
@@ -94,15 +113,6 @@
       });
     }
 
-    function flashPulse(color, opacity, hold = 100) {
-      if (flashTimeout) clearTimeout(flashTimeout);
-      flash.style.background = color;
-      flash.style.opacity = opacity;
-      flashTimeout = setTimeout(() => { flash.style.opacity = 0; }, hold);
-    }
-
-    function doReadyFlash() { flashPulse('white', READY_FLASH_OPACITY, 100); }
-
     function pulseFillRed() {
       const oldBg = bg25.getAttribute('fill') || 'white';
       const oldSolid = solidRefill.getAttribute('fill') || 'white';
@@ -111,7 +121,32 @@
       setTimeout(() => {
         bg25.setAttribute('fill', oldBg);
         solidRefill.setAttribute('fill', oldSolid);
-      }, 140);
+      }, 70);
+    }
+
+    function animatePress() {
+      icon.classList.remove('pressing');
+      // restart animation by forcing reflow
+      void icon.offsetWidth;
+      icon.classList.add('pressing');
+    }
+
+    function spawnReadyRipple() {
+      // Build a minimal standalone SVG so we avoid ID collisions
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const s = document.createElementNS(svgNS, 'svg');
+      s.setAttribute('viewBox', '0 0 100 100');
+      s.classList.add('ripple', 'animate');
+
+      const p = document.createElementNS(svgNS, 'path');
+      p.setAttribute('d', 'M50 5 L93 27.5 L93 72.5 L50 95 L7 72.5 L7 27.5 Z M50 26 L55 41 L70 36 L60 51 L70 66 L55 61 L50 76 L45 61 L30 66 L40 51 L30 36 L45 41 Z');
+      p.setAttribute('fill', 'white');
+      p.setAttribute('fill-rule', 'evenodd');
+      p.setAttribute('clip-rule', 'evenodd');
+      s.appendChild(p);
+
+      ripples.appendChild(s);
+      s.addEventListener('animationend', () => s.remove());
     }
 
     async function triggerCycle() {
@@ -119,6 +154,7 @@
       busy = true;
 
       if (state === 'ready') {
+        animatePress();
         await drainTo25();
         setRefillProgress(0);
         state = 'drained';
@@ -126,7 +162,7 @@
         await animateRefill();
         bg25.setAttribute('opacity', '1');
         state = 'ready';
-        doReadyFlash();
+        spawnReadyRipple();
       }
 
       busy = false;
