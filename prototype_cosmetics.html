@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cosmetics Chooser Mockup</title>
+  <style>
+    :root{
+      --bg: #0b0f17;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.12);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.62);
+      --accent: rgba(125,211,252,0.85);
+
+      --c1: #60a5fa;
+      --c2: #f472b6;
+      
+      --pattern-base: #2dd4bf;
+      --pattern-light: #64ffe9;
+      --pattern-dark: #0ea5a4;
+
+      /* Humanoid Dimensions */
+      --headSize: 60px; --headHalf: 30px;
+
+      --torsoW: 100px; --torsoHalfW: 50px;
+      --torsoH: 120px; --torsoHalfH: 60px;
+      --torsoD: 50px; --torsoHalfD: 25px;
+
+      --limbW: 35px; --limbHalfW: 17.5px;
+      --limbD: 35px; --limbHalfD: 17.5px;
+      --armH: 110px; --armHalfH: 55px;
+      --legH: 120px; --legHalfH: 60px;
+    }
+
+    *{ box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background:
+        radial-gradient(1000px 700px at 70% 30%, rgba(56,189,248,0.15), transparent 60%),
+        radial-gradient(900px 600px at 20% 70%, rgba(244,114,182,0.12), transparent 55%),
+        var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .app{
+      height:100%;
+      display:grid;
+      grid-template-columns: 240px 1fr 300px;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .col{
+      min-height: 0;
+      display:flex;
+      flex-direction:column;
+      gap: 12px;
+    }
+
+    .col-header{
+      font-size: 12px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 8px 10px;
+      border: 1px solid transparent;
+    }
+
+    .box{
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+
+    .box.static{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      height: 72px;
+    }
+    .box.static .label{
+      font-size: 14px;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+    }
+    .box.static .sub{
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .box.placeholder{
+      opacity: 0.82;
+      filter: saturate(0.85);
+    }
+
+    /* Right column foldouts */
+    .foldout{
+      padding: 0;
+      overflow:hidden;
+    }
+    .foldout > button{
+      width: 100%;
+      appearance: none;
+      background: transparent;
+      border: 0;
+      color: inherit;
+      cursor: pointer;
+      padding: 12px 12px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .foldout > button:focus-visible{
+      outline: 2px solid rgba(125,211,252,0.6);
+      outline-offset: 2px;
+      border-radius: 12px;
+    }
+    .foldout-title{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap: 3px;
+    }
+    .foldout-title .label{
+      font-size: 14px;
+      font-weight: 680;
+    }
+    .foldout-title .sub{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .chev{
+      width: 10px;
+      height: 10px;
+      border-right: 2px solid rgba(255,255,255,0.7);
+      border-bottom: 2px solid rgba(255,255,255,0.7);
+      transform: rotate(45deg);
+      transition: transform .18s ease;
+      margin-right: 4px;
+    }
+    .foldout.open .chev{ transform: rotate(-135deg); }
+    .foldout-content{
+      max-height: 0;
+      transition: max-height .22s ease;
+      overflow: hidden;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.02));
+    }
+    .foldout.open .foldout-content{
+      max-height: 440px;
+    }
+    .foldout-inner{
+      padding: 10px 12px 12px 12px;
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+    }
+
+    .opt-row{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .radio{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      cursor:pointer;
+      user-select:none;
+    }
+    .radio input{ accent-color: rgba(125,211,252,0.9); }
+    .radio:hover{ border-color: rgba(125,211,252,0.35); }
+    .radio .swatch { margin-left: -2px; }
+
+    .scheme-btn{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      cursor:pointer;
+      min-width: 100%;
+    }
+    .scheme-btn:hover{ border-color: rgba(125,211,252,0.35); }
+    .scheme-btn[aria-pressed="true"]{
+      border-color: rgba(125,211,252,0.65);
+      box-shadow: 0 0 0 3px rgba(125,211,252,0.12) inset;
+    }
+    .scheme-meta{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap: 2px;
+    }
+    .scheme-name{ font-size: 13px; font-weight: 650; }
+    .scheme-map{ font-size: 12px; color: var(--muted); }
+    .swatches{ display:flex; gap: 6px; }
+    .swatch{
+      width: 16px; height: 16px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.20);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    }
+
+    /* Center viewer */
+    .viewer{
+      flex: 1;
+      min-height: 0;
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+    }
+    .viewer-top{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(0,0,0,0.20), rgba(0,0,0,0.06));
+    }
+    .viewer-top .title{
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .viewer-top .meta{
+      font-size: 12px;
+      color: var(--muted);
+      display:flex;
+      gap: 10px;
+      align-items:center;
+    }
+    .pill{
+      padding: 5px 8px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+    }
+
+    .avatar-viewport{
+      flex: 1;
+      min-height: 0;
+      display:grid;
+      place-items:center;
+      perspective: 1200px;
+      position: relative;
+      outline: none;
+      cursor: grab;
+    }
+    .avatar-viewport:active{ cursor: grabbing; }
+
+    .avatar{
+      position: relative;
+      width: 300px;
+      height: 300px;
+      transform-style: preserve-3d;
+      transform: translateZ(0) rotateX(-18deg) rotateY(28deg);
+      will-change: transform;
+    }
+
+    /* Cubes */
+    .cube{
+      position:absolute;
+      top: 50%;
+      left: 50%;
+      transform-style: preserve-3d;
+    }
+    
+    /* 
+       Generic Face Styling 
+       IMPORTANT: We center the face elements and use translate(-50%, -50%) 
+       as the base of the transform. This ensures rotation occurs around the 
+       geometric center of the volume, preventing misalignment of sides/top.
+    */
+    .cube .face{
+      position:absolute;
+      top: 50%; 
+      left: 50%;
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow:
+        0 14px 38px rgba(0,0,0,0.45),
+        0 0 0 1px rgba(0,0,0,0.15) inset;
+      backface-visibility: hidden;
+      overflow:hidden;
+    }
+
+    /* Humanoid Part: Head */
+    .head-cube{
+      width: var(--headSize); height: var(--headSize);
+      transform: translate(-50%, -50%) translateY(-90px);
+    }
+    .head-cube .face{
+      width: var(--headSize); height: var(--headSize);
+      border-radius: 8px;
+    }
+    /* Head is a cube, all faces same size */
+    .head-cube .front { transform: translate(-50%, -50%) rotateY(0deg) translateZ(var(--headHalf)); }
+    .head-cube .back  { transform: translate(-50%, -50%) rotateY(180deg) translateZ(var(--headHalf)); }
+    .head-cube .right { transform: translate(-50%, -50%) rotateY(90deg) translateZ(var(--headHalf)); }
+    .head-cube .left  { transform: translate(-50%, -50%) rotateY(-90deg) translateZ(var(--headHalf)); }
+    .head-cube .top   { transform: translate(-50%, -50%) rotateX(90deg) translateZ(var(--headHalf)); }
+    .head-cube .bottom{ transform: translate(-50%, -50%) rotateX(-90deg) translateZ(var(--headHalf)); }
+
+    /* Humanoid Part: Torso */
+    .torso-cube{
+      width: var(--torsoW); height: var(--torsoH);
+      transform: translate(-50%, -50%) translateY(10px);
+    }
+    .torso-cube .face { border-radius: 8px; }
+    
+    .torso-cube .front, .torso-cube .back { width: var(--torsoW); height: var(--torsoH); }
+    .torso-cube .right, .torso-cube .left { width: var(--torsoD); height: var(--torsoH); }
+    .torso-cube .top, .torso-cube .bottom { width: var(--torsoW); height: var(--torsoD); }
+    
+    .torso-cube .front { transform: translate(-50%, -50%) rotateY(0deg) translateZ(var(--torsoHalfD)); }
+    .torso-cube .back { transform: translate(-50%, -50%) rotateY(180deg) translateZ(var(--torsoHalfD)); }
+    /* Side faces are translated by HALF WIDTH */
+    .torso-cube .right { transform: translate(-50%, -50%) rotateY(90deg) translateZ(var(--torsoHalfW)); }
+    .torso-cube .left { transform: translate(-50%, -50%) rotateY(-90deg) translateZ(var(--torsoHalfW)); }
+    /* Top/Bottom faces are translated by HALF HEIGHT */
+    .torso-cube .top { transform: translate(-50%, -50%) rotateX(90deg) translateZ(var(--torsoHalfH)); }
+    .torso-cube .bottom { transform: translate(-50%, -50%) rotateX(-90deg) translateZ(var(--torsoHalfH)); }
+
+    /* Humanoid Part: Arms */
+    .arm-cube{
+      width: var(--limbW); height: var(--armH);
+    }
+    .r-arm-cube{ transform: translate(-50%, -50%) translateY(10px) translateX(calc(var(--torsoHalfW) + var(--limbHalfW) + 5px)); }
+    .l-arm-cube{ transform: translate(-50%, -50%) translateY(10px) translateX(calc(-1 * (var(--torsoHalfW) + var(--limbHalfW) + 5px))); }
+    
+    .arm-cube .face { border-radius: 6px; }
+    .arm-cube .front, .arm-cube .back { width: var(--limbW); height: var(--armH); }
+    .arm-cube .right, .arm-cube .left { width: var(--limbD); height: var(--armH); }
+    .arm-cube .top, .arm-cube .bottom { width: var(--limbW); height: var(--limbD); }
+    
+    .arm-cube .front { transform: translate(-50%, -50%) rotateY(0deg) translateZ(var(--limbHalfD)); }
+    .arm-cube .back { transform: translate(-50%, -50%) rotateY(180deg) translateZ(var(--limbHalfD)); }
+    .arm-cube .right { transform: translate(-50%, -50%) rotateY(90deg) translateZ(var(--limbHalfW)); }
+    .arm-cube .left { transform: translate(-50%, -50%) rotateY(-90deg) translateZ(var(--limbHalfW)); }
+    .arm-cube .top { transform: translate(-50%, -50%) rotateX(90deg) translateZ(var(--armHalfH)); }
+    .arm-cube .bottom { transform: translate(-50%, -50%) rotateX(-90deg) translateZ(var(--armHalfH)); }
+
+    /* Humanoid Part: Legs */
+    .leg-cube{
+      width: var(--limbW); height: var(--legH);
+    }
+    .r-leg-cube{ transform: translate(-50%,-50%) translateY(calc(var(--torsoHalfH) + var(--legHalfH) + 10px)) translateX(calc(var(--torsoHalfW) - var(--limbHalfW))); }
+    .l-leg-cube{ transform: translate(-50%,-50%) translateY(calc(var(--torsoHalfH) + var(--legHalfH) + 10px)) translateX(calc(-1 * (var(--torsoHalfW) - var(--limbHalfW)))); }
+    
+    .leg-cube .face { border-radius: 6px; }
+    .leg-cube .front, .leg-cube .back { width: var(--limbW); height: var(--legH); }
+    .leg-cube .right, .leg-cube .left { width: var(--limbD); height: var(--legH); }
+    .leg-cube .top, .leg-cube .bottom { width: var(--limbW); height: var(--limbD); }
+    
+    .leg-cube .front { transform: translate(-50%, -50%) rotateY(0deg) translateZ(var(--limbHalfD)); }
+    .leg-cube .back { transform: translate(-50%, -50%) rotateY(180deg) translateZ(var(--limbHalfD)); }
+    .leg-cube .right { transform: translate(-50%, -50%) rotateY(90deg) translateZ(var(--limbHalfW)); }
+    .leg-cube .left { transform: translate(-50%, -50%) rotateY(-90deg) translateZ(var(--limbHalfW)); }
+    .leg-cube .top { transform: translate(-50%, -50%) rotateX(90deg) translateZ(var(--legHalfH)); }
+    .leg-cube .bottom { transform: translate(-50%, -50%) rotateX(-90deg) translateZ(var(--legHalfH)); }
+
+    /* Lighting overlay */
+    .face::before{
+      content:"";
+      position:absolute;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.16), transparent 55%),
+        linear-gradient(225deg, rgba(0,0,0,0.28), transparent 55%);
+      mix-blend-mode: overlay;
+      pointer-events:none;
+    }
+    
+    /* Paint Job: Simple */
+    .avatar.paint-simple .head-cube .face,
+    .avatar.paint-simple .torso-cube .face { background: var(--c2); }
+    .avatar.paint-simple .arm-cube .face,
+    .avatar.paint-simple .leg-cube .face { background: var(--c1); }
+    
+    /* Paint Job: Cross */
+    .avatar.paint-cross .head-cube .face,
+    .avatar.paint-cross .torso-cube .face,
+    .avatar.paint-cross .arm-cube .face { background: var(--c1); }
+    .avatar.paint-cross .leg-cube .face { background: var(--c2); }
+
+    /* Fallback Paint Job: Solid */
+     .avatar.paint-solid .cube .face { background: var(--c1); }
+
+    /* Patterns affect TORSO cube */
+    .avatar.pattern-stripes .torso-cube .face{
+      background: repeating-linear-gradient(
+        90deg,
+        var(--pattern-light) 0px, var(--pattern-light) 6px,
+        var(--pattern-dark) 6px, var(--pattern-dark) 12px
+      );
+    }
+    .avatar.pattern-dotted .torso-cube .face{
+      background-color: var(--pattern-dark);
+      background-image: radial-gradient(circle at 6px 6px, var(--pattern-light) 0 3px, transparent 3.2px);
+      background-size: 14px 14px;
+    }
+    /* When pattern is "none", torso color falls back to the paint job definition */
+
+    /* Viewer footer */
+    .viewer-bottom{
+      padding: 10px 12px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display:flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      background: linear-gradient(180deg, rgba(0,0,0,0.06), rgba(0,0,0,0.16));
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .legend{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      flex-wrap: wrap;
+    }
+    .chip{
+      display:flex;
+      align-items:center;
+      gap: 6px;
+      padding: 6px 8px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.03);
+      border-radius: 999px;
+      color: rgba(255,255,255,0.78);
+    }
+    .dot{
+      width: 10px; height: 10px;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.22);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+    }
+
+    .hint{
+      position:absolute;
+      left: 12px;
+      top: 52px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.60);
+      background: rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,0.10);
+      padding: 6px 8px;
+      border-radius: 999px;
+      backdrop-filter: blur(8px);
+      user-select: none;
+      pointer-events:none;
+    }
+
+    /* Scroll inside columns if needed */
+    .scroll{
+      overflow:auto;
+      padding-right: 2px;
+    }
+    .scroll::-webkit-scrollbar{ width: 10px; }
+    .scroll::-webkit-scrollbar-thumb{
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      border: 2px solid rgba(0,0,0,0.35);
+    }
+
+    /* Small screens */
+    @media (max-width: 980px){
+      body{ overflow:auto; }
+      .app{
+        height:auto;
+        grid-template-columns: 1fr;
+      }
+      .viewer{ min-height: 520px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Left -->
+    <div class="col">
+      <div class="col-header">MECH PARTS (placeholder)</div>
+      <div class="scroll" style="display:flex; flex-direction:column; gap:12px;">
+        <div class="box static placeholder">
+          <div>
+            <div class="label">Mech Core</div>
+            <div class="sub">Non-functional placeholder</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
+        <div class="box static placeholder">
+          <div>
+            <div class="label">Core Antennae</div>
+            <div class="sub">Non-functional placeholder</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
+        <div class="box static placeholder">
+          <div>
+            <div class="label">Arms</div>
+            <div class="sub">Non-functional placeholder</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
+        <div class="box static placeholder">
+          <div>
+            <div class="label">Legs</div>
+            <div class="sub">Non-functional placeholder</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center -->
+    <div class="col">
+      <div class="viewer">
+        <div class="viewer-top">
+          <div class="title">Avatar Preview</div>
+          <div class="meta">
+            <span class="pill" id="pillPaint">Paint: Simple</span>
+            <span class="pill" id="pillPattern">Pattern: Dotted</span>
+            <span class="pill" id="pillScheme">Scheme: Aurora</span>
+          </div>
+        </div>
+
+        <div class="avatar-viewport" id="viewport" tabindex="0" aria-label="3D preview. Drag to rotate.">
+          <div class="hint">Drag to rotate</div>
+          <div class="avatar paint-simple pattern-dotted" id="avatar">
+            <div class="cube head-cube" aria-hidden="true">
+              <div class="face front"></div><div class="face back"></div><div class="face right"></div><div class="face left"></div><div class="face top"></div><div class="face bottom"></div>
+            </div>
+            <div class="cube torso-cube" aria-hidden="true">
+              <div class="face front"></div><div class="face back"></div><div class="face right"></div><div class="face left"></div><div class="face top"></div><div class="face bottom"></div>
+            </div>
+            <div class="cube arm-cube r-arm-cube" aria-hidden="true">
+              <div class="face front"></div><div class="face back"></div><div class="face right"></div><div class="face left"></div><div class="face top"></div><div class="face bottom"></div>
+            </div>
+            <div class="cube arm-cube l-arm-cube" aria-hidden="true">
+              <div class="face front"></div><div class="face back"></div><div class="face right"></div><div class="face left"></div><div class="face top"></div><div class="face bottom"></div>
+            </div>
+            <div class="cube leg-cube r-leg-cube" aria-hidden="true">
+              <div class="face front"></div><div class="face back"></div><div class="face right"></div><div class="face left"></div><div class="face top"></div><div class="face bottom"></div>
+            </div>
+            <div class="cube leg-cube l-leg-cube" aria-hidden="true">
+              <div class="face front"></div><div class="face back"></div><div class="face right"></div><div class="face left"></div><div class="face top"></div><div class="face bottom"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="viewer-bottom">
+          <div class="legend">
+            <div class="chip"><span class="dot" style="background: var(--c1);"></span> Color 1</div>
+            <div class="chip"><span class="dot" style="background: var(--c2);"></span> Color 2</div>
+          </div>
+          <div id="mappingText">Paint Job maps colors 1–2 to the avatar. The Pattern applies only to the chest.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right -->
+    <div class="col">
+      <div class="col-header">COSMETICS</div>
+
+      <div class="scroll" style="display:flex; flex-direction:column; gap:12px;">
+        <!-- Pattern -->
+        <div class="box foldout open" id="foldPattern">
+          <button type="button" aria-expanded="true" aria-controls="patternContent" data-toggle="pattern">
+            <div class="foldout-title">
+              <div class="label">Pattern</div>
+              <div class="sub">Applied to the chest</div>
+            </div>
+            <div class="chev" aria-hidden="true"></div>
+          </button>
+          <div class="foldout-content" id="patternContent">
+            <div class="foldout-inner">
+              <label class="radio"><input type="radio" name="pattern" value="none"> None</label>
+              <label class="radio"><input type="radio" name="pattern" value="stripes"> Stripes</label>
+              <label class="radio"><input type="radio" name="pattern" value="dotted" checked> Dotted</label>
+              <hr style="border:0; border-top: 1px solid var(--border); margin: 6px 0;">
+              <div style="font-size:12px; color: var(--muted); margin-bottom: 6px;">Pattern Color</div>
+              <div class="opt-row" id="patternColorList">
+                  <!-- JS inserts pattern color swatches -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Color Scheme -->
+        <div class="box foldout open" id="foldScheme">
+          <button type="button" aria-expanded="true" aria-controls="schemeContent" data-toggle="scheme">
+            <div class="foldout-title">
+              <div class="label">Color Scheme</div>
+              <div class="sub">2 complementary colors</div>
+            </div>
+            <div class="chev" aria-hidden="true"></div>
+          </button>
+          <div class="foldout-content" id="schemeContent">
+            <div class="foldout-inner" id="schemeList">
+              <!-- JS inserts schemes -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Paint Job -->
+        <div class="box foldout open" id="foldPaint">
+          <button type="button" aria-expanded="true" aria-controls="paintContent" data-toggle="paint">
+            <div class="foldout-title">
+              <div class="label">Paint Job</div>
+              <div class="sub">Defines how scheme colors are mapped</div>
+            </div>
+            <div class="chev" aria-hidden="true"></div>
+          </button>
+          <div class="foldout-content" id="paintContent">
+            <div class="foldout-inner">
+              <label class="radio"><input type="radio" name="paint" value="simple" checked> Simple (Limbs C1 / Body C2)</label>
+              <label class="radio"><input type="radio" name="paint" value="cross"> Cross (Body C1 / Legs C2)</label>
+              <label class="radio"><input type="radio" name="paint" value="solid"> Solid (All C1)</label>
+              <div style="font-size:12px; color:var(--muted); line-height:1.35; margin-top: 6px;">
+                Note: if a pattern is selected, it will override the paint job color on the chest.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="box static placeholder">
+          <div>
+            <div class="label">Projection</div>
+            <div class="sub">Placeholder (non-functional)</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const schemes = [
+    { name: "Aurora", colors: ["#60a5fa", "#f472b6"] },
+    { name: "Ember",  colors: ["#fb7185", "#f59e0b"] },
+    { name: "Oceanic", colors: ["#2dd4bf", "#22c55e"] },
+    { name: "Cobalt / Lime", colors: ["#2563eb", "#a3e635"] },
+    { name: "Grayscale", colors: ["#e5e7eb", "#64748b"] }
+  ];
+
+  const patternColors = [
+      { name: "Cyan", color: "#22d3ee" },
+      { name: "Pink", color: "#f472b6" },
+      { name: "Lime", color: "#a3e635" },
+      { name: "White", color: "#f1f5f9" }
+  ];
+
+  const state = {
+    schemeIndex: 0,
+    paint: "simple",
+    pattern: "dotted",
+    patternColor: patternColors[0].color,
+    rotX: -18,
+    rotY: 28,
+  };
+
+  const avatar = document.getElementById("avatar");
+  const viewport = document.getElementById("viewport");
+  const pillPaint = document.getElementById("pillPaint");
+  const pillPattern = document.getElementById("pillPattern");
+  const pillScheme = document.getElementById("pillScheme");
+  const mappingText = document.getElementById("mappingText");
+  const schemeList = document.getElementById("schemeList");
+  const patternColorList = document.getElementById("patternColorList");
+
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+  function hexToRgb(hex){
+    const h = hex.replace("#","").trim();
+    const full = h.length === 3 ? h.split("").map(c => c+c).join("") : h;
+    const num = parseInt(full, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
+  function rgbToHex(r,g,b){
+    const toHex = (x) => x.toString(16).padStart(2,"0");
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+  }
+
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return { h, s, l };
+  }
+
+  function hslToRgb(h, s, l) {
+    function hue2rgb(p, q, t) {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    }
+    let r, g, b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+  }
+
+  function lightenDarken(hex, deltaL){
+    const {r,g,b} = hexToRgb(hex);
+    const hsl = rgbToHsl(r,g,b);
+    hsl.l = clamp(hsl.l + deltaL, 0, 1);
+    const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
+    return rgbToHex(rgb.r, rgb.g, rgb.b);
+  }
+
+  function setRootColorVars(){
+    const root = document.documentElement.style;
+    const s = schemes[state.schemeIndex];
+    root.setProperty("--c1", s.colors[0]);
+    root.setProperty("--c2", s.colors[1]);
+    
+    root.setProperty("--pattern-base", state.patternColor);
+    root.setProperty("--pattern-light", lightenDarken(state.patternColor, 0.18));
+    root.setProperty("--pattern-dark", lightenDarken(state.patternColor, -0.14));
+  }
+
+  function setAvatarClasses(){
+    avatar.className = "avatar"; // Clear all classes first
+    avatar.classList.add("paint-" + state.paint);
+    avatar.classList.add("pattern-" + state.pattern);
+  }
+
+  function updatePills(){
+    const paintJobs = {simple:"Simple", cross:"Cross", solid:"Solid"};
+    const patterns = {none:"None", stripes:"Stripes", dotted:"Dotted"};
+    pillPaint.textContent = "Paint: " + (paintJobs[state.paint] || state.paint);
+    pillPattern.textContent = "Pattern: " + (patterns[state.pattern] || state.pattern);
+    pillScheme.textContent = "Scheme: " + schemes[state.schemeIndex].name;
+  }
+
+  function applyState(){
+    setRootColorVars();
+    setAvatarClasses();
+    updatePills();
+  }
+
+  // Build UI
+  function buildSchemes(){
+    schemeList.innerHTML = "";
+    schemes.forEach((s, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "scheme-btn";
+      btn.setAttribute("aria-pressed", String(idx === state.schemeIndex));
+      btn.dataset.schemeIndex = String(idx);
+
+      const meta = document.createElement("div");
+      meta.className = "scheme-meta";
+      const name = document.createElement("div");
+      name.className = "scheme-name";
+      name.textContent = s.name;
+      const map = document.createElement("div");
+      map.className = "scheme-map";
+      map.textContent = "Color 1 / Color 2";
+      meta.appendChild(name);
+      meta.appendChild(map);
+
+      const sw = document.createElement("div");
+      sw.className = "swatches";
+      s.colors.forEach(c => {
+        const d = document.createElement("div");
+        d.className = "swatch";
+        d.style.background = c;
+        sw.appendChild(d);
+      });
+
+      btn.appendChild(meta);
+      btn.appendChild(sw);
+      btn.addEventListener("click", () => {
+        state.schemeIndex = idx;
+        for (const el of schemeList.querySelectorAll(".scheme-btn")){
+          el.setAttribute("aria-pressed", String(el.dataset.schemeIndex === String(idx)));
+        }
+        applyState();
+      });
+      schemeList.appendChild(btn);
+    });
+  }
+  
+  function buildPatternColors() {
+    patternColorList.innerHTML = "";
+    patternColors.forEach((pc, idx) => {
+        const label = document.createElement('label');
+        label.className = 'radio';
+        label.title = pc.name;
+        label.style.padding = '8px';
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'patternColor';
+        input.value = pc.color;
+        if (pc.color === state.patternColor) input.checked = true;
+        
+        const swatch = document.createElement('span');
+        swatch.className = 'swatch';
+        swatch.style.background = pc.color;
+        
+        label.appendChild(input);
+        label.appendChild(swatch);
+        patternColorList.appendChild(label);
+
+        input.addEventListener('change', () => {
+            if (!input.checked) return;
+            state.patternColor = input.value;
+            applyState();
+        });
+    });
+  }
+
+  // Event Listeners
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".foldout > button");
+    if(!btn) return;
+    const fold = btn.closest(".foldout");
+    if(!fold) return;
+    const isOpen = fold.classList.contains("open");
+    fold.classList.toggle("open", !isOpen);
+    btn.setAttribute("aria-expanded", String(!isOpen));
+  });
+
+  document.querySelectorAll('input[name="pattern"]').forEach(el => {
+    el.addEventListener("change", () => {
+      if(!el.checked) return;
+      state.pattern = el.value;
+      applyState();
+    });
+  });
+
+  document.querySelectorAll('input[name="paint"]').forEach(el => {
+    el.addEventListener("change", () => {
+      if(!el.checked) return;
+      state.paint = el.value;
+      applyState();
+    });
+  });
+
+  // Drag rotate
+  let dragging = false;
+  let startX = 0, startY = 0;
+  let startRotX = 0, startRotY = 0;
+  let lastT = performance.now();
+  let auto = true;
+
+  function setAvatarTransform(){
+    avatar.style.transform =
+      `translateZ(0) rotateX(${state.rotX}deg) rotateY(${state.rotY}deg)`;
+  }
+
+  viewport.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    auto = false;
+    viewport.setPointerCapture(e.pointerId);
+    startX = e.clientX;
+    startY = e.clientY;
+    startRotX = state.rotX;
+    startRotY = state.rotY;
+  });
+
+  viewport.addEventListener("pointermove", (e) => {
+    if(!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    state.rotY = startRotY + dx * 0.35;
+    state.rotX = clamp(startRotX - dy * 0.25, -70, 70);
+    setAvatarTransform();
+  });
+
+  const stopDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    setTimeout(() => { auto = true; }, 900);
+  };
+  viewport.addEventListener("pointerup", stopDrag);
+  viewport.addEventListener("pointercancel", stopDrag);
+  viewport.addEventListener("pointerleave", stopDrag);
+
+  function tick(t){
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+    if(auto && !dragging){
+      state.rotY += dt * 14.0;
+      setAvatarTransform();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Init
+  buildSchemes();
+  buildPatternColors();
+  applyState();
+  setAvatarTransform();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
