@@ -512,13 +512,6 @@
         </div>
         <div class="box static placeholder">
           <div>
-            <div class="label">Core Antennae</div>
-            <div class="sub">Non-functional placeholder</div>
-          </div>
-          <div class="sub">—</div>
-        </div>
-        <div class="box static placeholder">
-          <div>
             <div class="label">Arms</div>
             <div class="sub">Non-functional placeholder</div>
           </div>
@@ -527,6 +520,20 @@
         <div class="box static placeholder">
           <div>
             <div class="label">Legs</div>
+            <div class="sub">Non-functional placeholder</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
+        <div class="box static placeholder">
+          <div>
+            <div class="label">Antennae</div>
+            <div class="sub">Non-functional placeholder</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
+        <div class="box static placeholder">
+          <div>
+            <div class="label">Shoulderpads</div>
             <div class="sub">Non-functional placeholder</div>
           </div>
           <div class="sub">—</div>
@@ -583,8 +590,14 @@
     <!-- Right -->
     <div class="col">
       <div class="col-header">COSMETICS</div>
-
       <div class="scroll" style="display:flex; flex-direction:column; gap:12px;">
+	          <div class="box static placeholder">
+          <div>
+            <div class="label">Projection</div>
+            <div class="sub">Placeholder (non-functional)</div>
+          </div>
+          <div class="sub">—</div>
+        </div>
         <!-- Pattern -->
         <div class="box foldout open" id="foldPattern">
           <button type="button" aria-expanded="true" aria-controls="patternContent" data-toggle="pattern">
@@ -609,8 +622,8 @@
         </div>
 
         <!-- Color Scheme -->
-        <div class="box foldout open" id="foldScheme">
-          <button type="button" aria-expanded="true" aria-controls="schemeContent" data-toggle="scheme">
+        <div class="box foldout" id="foldScheme">
+          <button type="button" aria-expanded="false" aria-controls="schemeContent" data-toggle="scheme">
             <div class="foldout-title">
               <div class="label">Color Scheme</div>
               <div class="sub">2 complementary colors</div>
@@ -625,8 +638,8 @@
         </div>
 
         <!-- Paint Job -->
-        <div class="box foldout open" id="foldPaint">
-          <button type="button" aria-expanded="true" aria-controls="paintContent" data-toggle="paint">
+        <div class="box foldout" id="foldPaint">
+          <button type="button" aria-expanded="false" aria-controls="paintContent" data-toggle="paint">
             <div class="foldout-title">
               <div class="label">Paint Job</div>
               <div class="sub">Defines how scheme colors are mapped</div>
@@ -644,15 +657,13 @@
             </div>
           </div>
         </div>
-
         <div class="box static placeholder">
           <div>
-            <div class="label">Projection</div>
-            <div class="sub">Placeholder (non-functional)</div>
+            <div class="label">Wear and Tear</div>
+            <div class="sub">Placeholder - Control degree of rust/tear on metal plates</div>
           </div>
           <div class="sub">—</div>
         </div>
-
       </div>
     </div>
   </div>
@@ -857,12 +868,25 @@
     });
   }
 
-  // Event Listeners
+  // Event Listeners for Accordion Logic
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".foldout > button");
     if(!btn) return;
     const fold = btn.closest(".foldout");
     if(!fold) return;
+
+    // Logic: If opening a closed foldout, close all others first
+    if (!fold.classList.contains("open")) {
+      document.querySelectorAll(".foldout").forEach(f => {
+        if(f !== fold && f.classList.contains("open")) {
+          f.classList.remove("open");
+          const b = f.querySelector("button");
+          if(b) b.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
+
+    // Toggle the clicked one
     const isOpen = fold.classList.contains("open");
     fold.classList.toggle("open", !isOpen);
     btn.setAttribute("aria-expanded", String(!isOpen));
