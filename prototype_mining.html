@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Isometric Mining Demo</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: rgba(12, 18, 26, 0.75);
+      --text: #e6eef7;
+      --muted: rgba(230,238,247,0.7);
+      --accent: #63c7ff;
+      --danger: #ff6b6b;
+      --ok: #7CFF8A;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      overflow: hidden;
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none; /* critical for iOS panning/zoom prevention */
+    }
+    .hud {
+      position: absolute;
+      left: env(safe-area-inset-left);
+      top: env(safe-area-inset-top);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      max-width: min(520px, calc(100vw - 20px));
+      pointer-events: none;
+    }
+    .panel {
+      pointer-events: auto;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    button {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:active { transform: translateY(1px); }
+    button.primary { border-color: rgba(99,199,255,0.45); }
+    button.tog.on { border-color: rgba(124,255,138,0.45); }
+    button.tog.off { border-color: rgba(255,255,255,0.12); opacity: 0.85; }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 10px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .sw {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+      margin-right: 8px;
+      border: 1px solid rgba(255,255,255,0.15);
+      vertical-align: -2px;
+    }
+    .kpi {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .kpi b { color: var(--text); }
+    .hint {
+      position: absolute;
+      right: env(safe-area-inset-right);
+      bottom: env(safe-area-inset-bottom);
+      margin: 10px;
+      max-width: min(520px, calc(100vw - 20px));
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div class="hud">
+    <div class="panel">
+      <div class="row" style="justify-content: space-between;">
+        <div style="font-weight: 800;">Isometric Mining (Dungeon Keeper–like)</div>
+        <div class="kpi">
+          <span>Workers: <b id="kWorkers">4</b></span>
+          <span>Marked: <b id="kMarked">0</b></span>
+          <span>Debris: <b id="kDebris">0</b></span>
+          <span>Dumped: <b id="kDumped">0</b></span>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnNew" class="primary">New Map</button>
+        <button id="btnPause" class="tog on">Running</button>
+        <button id="btnSpeed" class="tog off">Speed: 1x</button>
+        <button id="btnClear" class="tog off">Clear Marks</button>
+      </div>
+      <div class="small" style="margin-top:8px;">
+        Tap blocks to toggle “mine” marking. Workers will only mine targets they can reach via a clear path to an adjacent tile.
+        When mined, a debris pile drops on the cleared tile; a worker must carry it back to the dump outside (left side).
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content: space-between;">
+        <div style="font-weight: 700;">Block Types (hardness)</div>
+        <div class="small">Harder = slower mining</div>
+      </div>
+      <div class="legend" style="margin-top:8px;">
+        <div><span class="sw" style="background:#7a5b3a"></span>Dirt (1)</div>
+        <div><span class="sw" style="background:#9b6a43"></span>Clay (2)</div>
+        <div><span class="sw" style="background:#666b73"></span>Rock (4)</div>
+        <div><span class="sw" style="background:#3f4650"></span>Granite (6)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel hint">
+    <div class="small">
+      Controls: drag with one finger to pan • pinch to zoom • tap to mark/unmark • workers avoid unreachable marks.
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- Canvas / View ----------
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  const kWorkers = document.getElementById('kWorkers');
+  const kMarked  = document.getElementById('kMarked');
+  const kDebris  = document.getElementById('kDebris');
+  const kDumped  = document.getElementById('kDumped');
+
+  let dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  function resize() {
+    dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    canvas.width  = Math.floor(canvas.clientWidth * dpr);
+    canvas.height = Math.floor(canvas.clientHeight * dpr);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(dpr, dpr);
+  }
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+
+  // Isometric tile dimensions (screen pixels, before dpr scaling)
+  const TILE_W = 50;
+  const TILE_H = 26;
+  const W2 = TILE_W / 2;
+  const H2 = TILE_H / 2;
+
+  // Pan/zoom camera
+  const cam = {
+    x: 0,
+    y: 0,
+    zoom: 1.0,
+  };
+
+  // ---------- World / Map ----------
+  const COLS = 34;
+  const ROWS = 28;
+  const OUTSIDE_MARGIN_LEFT = 4; // tiles at x = -OUTSIDE_MARGIN_LEFT .. -1 are outside walkable
+  const DUMP_POS = { x: -3, y: Math.floor(ROWS/2) }; // "outside pile"
+
+  const BlockDefs = [
+    { id: 1, name: 'Dirt',    hardness: 1, top: '#7a5b3a', side: '#5f452c' },
+    { id: 2, name: 'Clay',    hardness: 2, top: '#9b6a43', side: '#7a5436' },
+    { id: 3, name: 'Rock',    hardness: 4, top: '#666b73', side: '#4f5359' },
+    { id: 4, name: 'Granite', hardness: 6, top: '#3f4650', side: '#2b3038' },
+  ];
+
+  // Cell: { solid:boolean, type:int, hp:number, marked:boolean }
+  let grid = [];
+  let debris = new Map(); // key "x,y" -> {x,y, qty}
+  let dumpedCount = 0;
+
+  function keyXY(x,y){ return `${x},${y}`; }
+  function inMine(x,y){ return x >= 0 && x < COLS && y >= 0 && y < ROWS; }
+  function inWorld(x,y){ return x >= -OUTSIDE_MARGIN_LEFT && x < COLS && y >= 0 && y < ROWS; }
+
+  function cellAt(x,y){
+    if (!inMine(x,y)) return null;
+    return grid[y][x];
+  }
+
+  function isWalkable(x,y){
+    if (!inWorld(x,y)) return false;
+    // outside corridor is always walkable
+    if (x < 0) return true;
+    const c = cellAt(x,y);
+    return c && !c.solid; // empty mine tiles are walkable
+  }
+
+  function generateMap() {
+    debris.clear();
+    dumpedCount = 0;
+
+    grid = new Array(ROWS);
+    for (let y=0; y<ROWS; y++) {
+      grid[y] = new Array(COLS);
+      for (let x=0; x<COLS; x++) {
+        // Weighted random block type
+        const r = Math.random();
+        let def;
+        if (r < 0.50) def = BlockDefs[0];
+        else if (r < 0.78) def = BlockDefs[1];
+        else if (r < 0.93) def = BlockDefs[2];
+        else def = BlockDefs[3];
+
+        grid[y][x] = {
+          solid: true,
+          type: def.id,
+          hp: def.hardness * 120,
+          marked: false,
+        };
+      }
+    }
+
+    // Carve an entrance room/corridor so workers can start mining immediately
+    const mid = Math.floor(ROWS/2);
+    for (let y = mid-2; y <= mid+2; y++){
+      for (let x = 0; x <= 3; x++){
+        const c = cellAt(x,y);
+        if (!c) continue;
+        c.solid = false;
+        c.marked = false;
+        c.hp = 0;
+      }
+    }
+
+    // sprinkle a few random empty pockets (optional)
+    for (let i=0; i<25; i++){
+      const x = 3 + (Math.random()*(COLS-6) | 0);
+      const y = 2 + (Math.random()*(ROWS-4) | 0);
+      const c = cellAt(x,y);
+      if (!c) continue;
+      if (Math.random() < 0.35) { c.solid = false; c.hp = 0; c.marked = false; }
+    }
+
+    // Reset camera to sensible default
+    cam.zoom = 1.0;
+    cam.x = canvas.clientWidth * 0.52;
+    cam.y = canvas.clientHeight * 0.18;
+
+    // Reset workers
+    workers = makeWorkers(4);
+    kWorkers.textContent = workers.length;
+  }
+
+  // ---------- Isometric transforms ----------
+  function worldToScreen(gx, gy) {
+    const sx = (gx - gy) * W2;
+    const sy = (gx + gy) * H2;
+    return { x: sx, y: sy };
+  }
+  function screenToWorld(px, py) {
+    // Inverse of:
+    // sx = (gx - gy) * W2
+    // sy = (gx + gy) * H2
+    const sx = px / W2;
+    const sy = py / H2;
+    const gx = (sy + sx) / 2;
+    const gy = (sy - sx) / 2;
+    return { x: gx, y: gy };
+  }
+
+  function applyCameraToScreen(x, y){
+    // world iso coords -> screen coords
+    return {
+      x: cam.x + x * cam.zoom,
+      y: cam.y + y * cam.zoom,
+    };
+  }
+
+  function unapplyCameraFromScreen(x, y){
+    // screen coords -> iso coords (world)
+    return {
+      x: (x - cam.x) / cam.zoom,
+      y: (y - cam.y) / cam.zoom,
+    };
+  }
+
+  function isoToGridFromPointer(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+
+    const iso = unapplyCameraFromScreen(sx, sy);
+    const g = screenToWorld(iso.x, iso.y);
+
+    const gx = Math.floor(g.x + 0.00001);
+    const gy = Math.floor(g.y + 0.00001);
+    return { gx, gy };
+  }
+
+  // ---------- Pathfinding ----------
+  const DIRS = [
+    {x: 1, y: 0},
+    {x:-1, y: 0},
+    {x: 0, y: 1},
+    {x: 0, y:-1},
+  ];
+
+  function bfsPath(start, goal, blockedSet) {
+    // goal: {x,y}
+    // blockedSet: Set("x,y") of temporarily blocked (workers)
+    const q = [];
+    const came = new Map(); // key -> prevKey
+    const startK = keyXY(start.x, start.y);
+    const goalK  = keyXY(goal.x, goal.y);
+
+    q.push(start);
+    came.set(startK, null);
+
+    while (q.length) {
+      const cur = q.shift();
+      const curK = keyXY(cur.x, cur.y);
+      if (curK === goalK) break;
+
+      for (const d of DIRS) {
+        const nx = cur.x + d.x;
+        const ny = cur.y + d.y;
+        if (!inWorld(nx, ny)) continue;
+
+        const nk = keyXY(nx, ny);
+        if (came.has(nk)) continue;
+
+        // walkable, except temporarily blocked
+        if (!isWalkable(nx, ny)) continue;
+        if (blockedSet && blockedSet.has(nk) && nk !== goalK) continue;
+
+        came.set(nk, curK);
+        q.push({x:nx, y:ny});
+      }
+    }
+
+    if (!came.has(goalK)) return null;
+
+    // reconstruct
+    const path = [];
+    let k = goalK;
+    while (k !== startK) {
+      const [x,y] = k.split(',').map(Number);
+      path.push({x,y});
+      k = came.get(k);
+      if (k == null) break;
+    }
+    path.reverse();
+    return path;
+  }
+
+  function bfsDistances(start, blockedSet) {
+    // returns Map key->distance
+    const q = [];
+    const dist = new Map();
+    const startK = keyXY(start.x, start.y);
+    q.push(start);
+    dist.set(startK, 0);
+
+    while (q.length) {
+      const cur = q.shift();
+      const curD = dist.get(keyXY(cur.x, cur.y));
+
+      for (const d of DIRS) {
+        const nx = cur.x + d.x;
+        const ny = cur.y + d.y;
+        if (!inWorld(nx, ny)) continue;
+
+        const nk = keyXY(nx, ny);
+        if (dist.has(nk)) continue;
+
+        if (!isWalkable(nx, ny)) continue;
+        if (blockedSet && blockedSet.has(nk) && nk !== startK) continue;
+
+        dist.set(nk, curD + 1);
+        q.push({x:nx, y:ny});
+      }
+    }
+    return dist;
+  }
+
+  // ---------- Workers / AI ----------
+  let workers = [];
+
+  function makeWorkers(n) {
+    const arr = [];
+    for (let i=0; i<n; i++) {
+      arr.push({
+        id: i,
+        pos: { x: DUMP_POS.x, y: DUMP_POS.y + i }, // stagger
+        // smooth motion
+        fx: DUMP_POS.x,
+        fy: DUMP_POS.y + i,
+        path: [],
+        state: 'idle', // idle | go_mine | mining | go_pickup | go_dump
+        targetBlock: null,  // {x,y}
+        approach: null,     // {x,y}
+        carry: false,
+        miningT: 0,
+      });
+    }
+    return arr;
+  }
+
+  function occupiedSet(exceptId) {
+    const s = new Set();
+    for (const w of workers) {
+      if (w.id === exceptId) continue;
+      s.add(keyXY(w.pos.x, w.pos.y));
+    }
+    return s;
+  }
+
+  function findMineJob(worker) {
+    // Choose nearest marked block that has at least one adjacent walkable cell reachable.
+    // Use BFS distances from worker position.
+    const blocked = occupiedSet(worker.id);
+    const dist = bfsDistances(worker.pos, blocked);
+
+    let best = null; // {blockX,blockY, approachX,approachY, score}
+    for (let y=0; y<ROWS; y++) {
+      for (let x=0; x<COLS; x++) {
+        const c = cellAt(x,y);
+        if (!c || !c.solid || !c.marked) continue;
+
+        // Approach must be adjacent walkable
+        for (const d of DIRS) {
+          const ax = x + d.x;
+          const ay = y + d.y;
+          if (!isWalkable(ax, ay)) continue;
+
+          const ak = keyXY(ax, ay);
+          if (!dist.has(ak)) continue;
+
+          const score = dist.get(ak);
+          if (best == null || score < best.score) {
+            best = { bx:x, by:y, ax, ay, score };
+          }
+        }
+      }
+    }
+
+    if (!best) return null;
+
+    // build path to approach
+    const path = bfsPath(worker.pos, {x:best.ax, y:best.ay}, blocked);
+    if (!path) return null;
+
+    return {
+      targetBlock: {x: best.bx, y: best.by},
+      approach: {x: best.ax, y: best.ay},
+      path,
+    };
+  }
+
+  function stepWorker(worker, dt) {
+    const speed = 4.2 * simSpeed; // tiles per second
+    const blocked = occupiedSet(worker.id);
+
+    // If carrying and we can see dump path, prioritize completing it.
+    if (worker.state === 'idle') {
+      if (worker.carry) {
+        const p = bfsPath(worker.pos, DUMP_POS, blocked);
+        if (p) {
+          worker.path = p;
+          worker.state = 'go_dump';
+        }
+      } else {
+        // If standing on debris, pick up
+        const dk = keyXY(worker.pos.x, worker.pos.y);
+        if (debris.has(dk)) {
+          debris.delete(dk);
+          worker.carry = true;
+          const p = bfsPath(worker.pos, DUMP_POS, blocked);
+          if (p) {
+            worker.path = p;
+            worker.state = 'go_dump';
+          }
+          return;
+        }
+
+        const job = findMineJob(worker);
+        if (job) {
+          worker.targetBlock = job.targetBlock;
+          worker.approach = job.approach;
+          worker.path = job.path;
+          worker.state = 'go_mine';
+        }
+      }
+    }
+
+    // Movement along path
+    function moveAlongPath() {
+      if (!worker.path || worker.path.length === 0) return true;
+      const next = worker.path[0];
+
+      // If next is now blocked by someone else, try to re-path once
+      const nk = keyXY(next.x, next.y);
+      if (blocked.has(nk)) {
+        // Try recompute to current goal
+        let goal = next;
+        if (worker.state === 'go_mine' && worker.approach) goal = worker.approach;
+        if (worker.state === 'go_pickup' && worker.targetBlock) goal = worker.targetBlock; // (pickup is the cleared tile)
+        if (worker.state === 'go_dump') goal = DUMP_POS;
+
+        const p = bfsPath(worker.pos, goal, blocked);
+        if (p) worker.path = p;
+        else return false;
+      }
+
+      // Smooth step toward next tile center
+      const dx = next.x - worker.fx;
+      const dy = next.y - worker.fy;
+      const dist = Math.hypot(dx, dy);
+      const step = speed * dt;
+
+      if (dist <= step) {
+        worker.fx = next.x;
+        worker.fy = next.y;
+        worker.pos.x = next.x;
+        worker.pos.y = next.y;
+        worker.path.shift();
+      } else {
+        worker.fx += (dx / dist) * step;
+        worker.fy += (dy / dist) * step;
+      }
+      return true;
+    }
+
+    if (worker.state === 'go_mine') {
+      // If target got mined or unmarked, reset
+      const t = worker.targetBlock;
+      if (!t || !inMine(t.x,t.y)) { worker.state='idle'; worker.path=[]; return; }
+      const c = cellAt(t.x,t.y);
+      if (!c || !c.solid || !c.marked) { worker.state='idle'; worker.path=[]; return; }
+
+      // If not at approach, move
+      if (worker.approach && (worker.pos.x !== worker.approach.x || worker.pos.y !== worker.approach.y)) {
+        moveAlongPath();
+        return;
+      }
+
+      // At approach: mine if adjacent
+      const adjacent = Math.abs(worker.pos.x - t.x) + Math.abs(worker.pos.y - t.y) === 1;
+      if (!adjacent) {
+        // Recompute an adjacent approach (in case topology changed)
+        worker.state = 'idle';
+        worker.path = [];
+        return;
+      }
+
+      worker.state = 'mining';
+      worker.miningT = 0;
+      return;
+    }
+
+    if (worker.state === 'mining') {
+      const t = worker.targetBlock;
+      if (!t) { worker.state='idle'; return; }
+      const c = cellAt(t.x,t.y);
+      if (!c || !c.solid || !c.marked) { worker.state='idle'; return; }
+
+      worker.miningT += dt;
+      const def = BlockDefs[c.type - 1];
+      const miningRate = 70 * simSpeed; // hp per second (scaled)
+      c.hp -= miningRate * dt;
+
+      if (c.hp <= 0) {
+        // Mine complete: tile becomes empty; drops debris on that tile
+        c.solid = false;
+        c.marked = false;
+        c.hp = 0;
+        debris.set(keyXY(t.x,t.y), {x:t.x, y:t.y, qty:1});
+
+        // Next: go pick up by stepping onto the cleared tile
+        const p = bfsPath(worker.pos, {x:t.x, y:t.y}, blocked);
+        if (p) {
+          worker.path = p;
+          worker.state = 'go_pickup';
+        } else {
+          worker.state = 'idle';
+        }
+      }
+      return;
+    }
+
+    if (worker.state === 'go_pickup') {
+      const t = worker.targetBlock;
+      if (!t) { worker.state='idle'; return; }
+      moveAlongPath();
+
+      if (worker.pos.x === t.x && worker.pos.y === t.y) {
+        const dk = keyXY(t.x,t.y);
+        if (debris.has(dk)) {
+          debris.delete(dk);
+          worker.carry = true;
+          // go dump
+          const p = bfsPath(worker.pos, DUMP_POS, blocked);
+          if (p) {
+            worker.path = p;
+            worker.state = 'go_dump';
+          } else {
+            worker.state = 'idle';
+          }
+        } else {
+          worker.state = 'idle';
+        }
+      }
+      return;
+    }
+
+    if (worker.state === 'go_dump') {
+      moveAlongPath();
+      if (worker.pos.x === DUMP_POS.x && worker.pos.y === DUMP_POS.y) {
+        if (worker.carry) {
+          worker.carry = false;
+          dumpedCount++;
+        }
+        worker.state = 'idle';
+        worker.path = [];
+        worker.targetBlock = null;
+        worker.approach = null;
+      }
+      return;
+    }
+  }
+
+  // ---------- Interaction: tap to mark ----------
+  function toggleMark(gx, gy) {
+    if (!inMine(gx, gy)) return;
+    const c = cellAt(gx, gy);
+    if (!c || !c.solid) return;
+    c.marked = !c.marked;
+  }
+
+  // Pan/zoom gesture support (pointer events)
+  const pointers = new Map(); // id -> {x,y}
+  let isPanning = false;
+  let panStart = {x:0,y:0, camx:0, camy:0};
+
+  let pinchStart = null; // {dist, zoom, midx, midy, camx, camy}
+  function pointerPos(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
+  canvas.addEventListener('pointerdown', (ev) => {
+    canvas.setPointerCapture(ev.pointerId);
+    pointers.set(ev.pointerId, pointerPos(ev));
+
+    if (pointers.size === 1) {
+      isPanning = true;
+      const p = pointerPos(ev);
+      panStart = { x: p.x, y: p.y, camx: cam.x, camy: cam.y };
+    } else if (pointers.size === 2) {
+      // pinch start
+      const pts = [...pointers.values()];
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      const dist = Math.hypot(dx, dy);
+      const midx = (pts[0].x + pts[1].x) / 2;
+      const midy = (pts[0].y + pts[1].y) / 2;
+      pinchStart = { dist, zoom: cam.zoom, midx, midy, camx: cam.x, camy: cam.y };
+      isPanning = false;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('pointermove', (ev) => {
+    if (!pointers.has(ev.pointerId)) return;
+    pointers.set(ev.pointerId, pointerPos(ev));
+
+    if (pointers.size === 2 && pinchStart) {
+      const pts = [...pointers.values()];
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      const dist = Math.hypot(dx, dy);
+      const scale = dist / pinchStart.dist;
+
+      const newZoom = clamp(pinchStart.zoom * scale, 0.55, 2.1);
+
+      // Zoom about midpoint (keep iso point under finger stable)
+      const midx = (pts[0].x + pts[1].x) / 2;
+      const midy = (pts[0].y + pts[1].y) / 2;
+
+      const before = unapplyCameraFromScreen(midx, midy);
+      cam.zoom = newZoom;
+      const after  = unapplyCameraFromScreen(midx, midy);
+
+      cam.x += (after.x - before.x) * cam.zoom;
+      cam.y += (after.y - before.y) * cam.zoom;
+
+      return;
+    }
+
+    if (pointers.size === 1 && isPanning) {
+      const p = pointerPos(ev);
+      const dx = p.x - panStart.x;
+      const dy = p.y - panStart.y;
+      cam.x = panStart.camx + dx;
+      cam.y = panStart.camy + dy;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('pointerup', (ev) => {
+    if (!pointers.has(ev.pointerId)) return;
+
+    // Tap detection: if single pointer and small movement and short duration
+    const wasSingle = pointers.size === 1;
+    const pUp = pointerPos(ev);
+    const pDown = pointers.get(ev.pointerId);
+    pointers.delete(ev.pointerId);
+
+    if (pointers.size < 2) pinchStart = null;
+
+    if (wasSingle) {
+      const dx = (pUp.x - panStart.x);
+      const dy = (pUp.y - panStart.y);
+      const moved = Math.hypot(dx, dy);
+
+      // treat as tap if not moved much
+      if (moved < 10) {
+        const { gx, gy } = isoToGridFromPointer(ev.clientX, ev.clientY);
+        toggleMark(gx, gy);
+      }
+    }
+
+    if (pointers.size === 0) {
+      isPanning = false;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('pointercancel', (ev) => {
+    pointers.delete(ev.pointerId);
+    pinchStart = null;
+    isPanning = false;
+  }, { passive: true });
+
+  // ---------- UI Buttons ----------
+  let paused = false;
+  let simSpeed = 1;
+
+  document.getElementById('btnNew').addEventListener('click', () => generateMap());
+  document.getElementById('btnPause').addEventListener('click', (ev) => {
+    paused = !paused;
+    const btn = ev.currentTarget;
+    btn.textContent = paused ? 'Paused' : 'Running';
+    btn.classList.toggle('on', !paused);
+    btn.classList.toggle('off', paused);
+  });
+  document.getElementById('btnSpeed').addEventListener('click', (ev) => {
+    if (simSpeed === 1) simSpeed = 2;
+    else if (simSpeed === 2) simSpeed = 4;
+    else simSpeed = 1;
+    ev.currentTarget.textContent = `Speed: ${simSpeed}x`;
+  });
+  document.getElementById('btnClear').addEventListener('click', () => {
+    let count = 0;
+    for (let y=0; y<ROWS; y++) for (let x=0; x<COLS; x++) {
+      const c = cellAt(x,y);
+      if (c && c.marked) { c.marked = false; count++; }
+    }
+  });
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+  // ---------- Rendering ----------
+  function drawTileDiamond(sx, sy, w, h, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - h/2);
+    ctx.lineTo(sx + w/2, sy);
+    ctx.lineTo(sx, sy + h/2);
+    ctx.lineTo(sx - w/2, sy);
+    ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+  }
+
+  function drawBlockPrism(sx, sy, def, heightPx) {
+    // top diamond
+    const topY = sy - heightPx;
+
+    // sides
+    // right side quad
+    ctx.beginPath();
+    ctx.moveTo(sx, topY);
+    ctx.lineTo(sx + W2, topY + H2);
+    ctx.lineTo(sx + W2, topY + H2 + heightPx);
+    ctx.lineTo(sx, topY + heightPx);
+    ctx.closePath();
+    ctx.fillStyle = shade(def.side, -8);
+    ctx.fill();
+
+    // left side quad
+    ctx.beginPath();
+    ctx.moveTo(sx, topY);
+    ctx.lineTo(sx - W2, topY + H2);
+    ctx.lineTo(sx - W2, topY + H2 + heightPx);
+    ctx.lineTo(sx, topY + heightPx);
+    ctx.closePath();
+    ctx.fillStyle = shade(def.side, -16);
+    ctx.fill();
+
+    // top
+    drawTileDiamond(sx, topY, TILE_W, TILE_H, def.top, 'rgba(0,0,0,0.35)');
+  }
+
+  function shade(hex, amt) {
+    // simple hex shade
+    const c = hex.replace('#','');
+    const n = parseInt(c, 16);
+    let r = (n >> 16) & 255;
+    let g = (n >> 8) & 255;
+    let b = n & 255;
+    r = clamp(r + amt, 0, 255);
+    g = clamp(g + amt, 0, 255);
+    b = clamp(b + amt, 0, 255);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawDebris(sx, sy) {
+    // small pile icon on floor
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 5, 10, 6, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(180, 180, 190, 0.35)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(sx - 9, sy + 5);
+    ctx.lineTo(sx - 2, sy - 2);
+    ctx.lineTo(sx + 10, sy + 6);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(210, 210, 220, 0.55)';
+    ctx.fill();
+  }
+
+  function drawDump(sx, sy) {
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 6, 18, 10, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(99,199,255,0.10)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(99,199,255,0.35)';
+    ctx.stroke();
+
+    // heap
+    ctx.beginPath();
+    ctx.moveTo(sx - 14, sy + 7);
+    ctx.lineTo(sx - 4, sy - 5);
+    ctx.lineTo(sx + 14, sy + 8);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(99,199,255,0.20)';
+    ctx.fill();
+  }
+
+  function drawWorker(worker, sx, sy) {
+    // shadow
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 8, 10, 6, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fill();
+
+    // body
+    ctx.beginPath();
+    ctx.arc(sx, sy - 2, 8, 0, Math.PI*2);
+    ctx.fillStyle = worker.carry ? 'rgba(124,255,138,0.85)' : 'rgba(230,238,247,0.80)';
+    ctx.fill();
+
+    // head
+    ctx.beginPath();
+    ctx.arc(sx, sy - 11, 4, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(230,238,247,0.95)';
+    ctx.fill();
+
+    // carried debris indicator
+    if (worker.carry) {
+      ctx.beginPath();
+      ctx.rect(sx + 6, sy - 18, 6, 6);
+      ctx.fillStyle = 'rgba(200,200,210,0.85)';
+      ctx.fill();
+    }
+
+    // mining indicator
+    if (worker.state === 'mining') {
+      ctx.beginPath();
+      ctx.arc(sx, sy - 2, 14, -Math.PI/2, -Math.PI/2 + (Math.PI*2)*0.22);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+  }
+
+  function draw() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+
+    ctx.clearRect(0,0,w,h);
+
+    // background gradient
+    const g = ctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0, '#0b0f14');
+    g.addColorStop(1, '#070a0e');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,w,h);
+
+    // draw order: increasing (x+y), typically achieved by looping y then x
+    // include outside margin tiles
+    const xMin = -OUTSIDE_MARGIN_LEFT;
+    const xMax = COLS - 1;
+
+    // precompute worker screen positions for correct layering
+    const workerDraw = workers.map(wk => {
+      const iso = worldToScreen(wk.fx, wk.fy);
+      const scr = applyCameraToScreen(iso.x, iso.y);
+      return { wk, isoY: wk.fx + wk.fy, sx: scr.x, sy: scr.y };
+    });
+
+    // tiles
+    for (let y=0; y<ROWS; y++) {
+      for (let x=xMin; x<=xMax; x++) {
+        const iso = worldToScreen(x, y);
+        const scr = applyCameraToScreen(iso.x, iso.y);
+
+        // cull rough
+        if (scr.x < -120 || scr.x > w + 120 || scr.y < -160 || scr.y > h + 160) continue;
+
+        // base floor
+        const outside = x < 0;
+        const baseFill = outside ? 'rgba(99,199,255,0.06)' : 'rgba(255,255,255,0.03)';
+        drawTileDiamond(scr.x, scr.y, TILE_W*cam.zoom, TILE_H*cam.zoom, baseFill, 'rgba(0,0,0,0.25)');
+
+        // dump
+        if (x === DUMP_POS.x && y === DUMP_POS.y) {
+          drawDump(scr.x, scr.y);
+        }
+
+        // mine solid blocks
+        if (inMine(x,y)) {
+          const c = cellAt(x,y);
+          if (c && c.solid) {
+            const def = BlockDefs[c.type - 1];
+            const heightBase = 18 + def.hardness * 4;
+            const heightPx = heightBase * cam.zoom;
+            drawBlockPrism(scr.x, scr.y, def, heightPx);
+
+            // marking outline
+            if (c.marked) {
+              ctx.save();
+              ctx.globalAlpha = 0.9;
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = 'rgba(99,199,255,0.85)';
+              drawTileDiamond(scr.x, scr.y - heightPx, TILE_W*cam.zoom, TILE_H*cam.zoom, null, ctx.strokeStyle);
+              ctx.restore();
+            }
+
+            // damaged indicator
+            const maxHp = def.hardness * 120;
+            const hp01 = clamp(c.hp / maxHp, 0, 1);
+            if (hp01 < 1) {
+              ctx.save();
+              ctx.globalAlpha = 0.65;
+              ctx.fillStyle = 'rgba(0,0,0,0.35)';
+              ctx.fillRect(scr.x - 16, scr.y - heightPx - 26, 32, 5);
+              ctx.fillStyle = 'rgba(255,107,107,0.85)';
+              ctx.fillRect(scr.x - 16, scr.y - heightPx - 26, 32*(1-hp01), 5);
+              ctx.restore();
+            }
+          } else {
+            // debris on empty
+            const dk = keyXY(x,y);
+            if (debris.has(dk)) drawDebris(scr.x, scr.y);
+          }
+        }
+      }
+
+      // draw workers whose (x+y) matches this row band roughly by y; then let them float.
+      // For simplicity, do a second pass after tiles with a stable sort by (x+y).
+    }
+
+    workerDraw.sort((a,b) => (a.isoY - b.isoY));
+    for (const wd of workerDraw) drawWorker(wd.wk, wd.sx, wd.sy);
+
+    // metrics
+    let marked = 0;
+    for (let yy=0; yy<ROWS; yy++) for (let xx=0; xx<COLS; xx++) {
+      const c = cellAt(xx,yy);
+      if (c && c.marked) marked++;
+    }
+    kMarked.textContent = marked;
+    kDebris.textContent = debris.size;
+    kDumped.textContent = dumpedCount;
+  }
+
+  // ---------- Simulation loop ----------
+  let lastT = performance.now();
+  function tick(t) {
+    const dtRaw = (t - lastT) / 1000;
+    lastT = t;
+    const dt = Math.min(0.04, dtRaw); // clamp
+
+    if (!paused) {
+      for (const w of workers) stepWorker(w, dt);
+    }
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- Boot ----------
+  generateMap();
+  requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>
