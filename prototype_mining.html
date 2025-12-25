@@ -130,6 +130,7 @@
         <button id="btnPause" class="tog on">Running</button>
         <button id="btnSpeed" class="tog off">Speed: 1x</button>
         <button id="btnClear" class="tog off">Clear Marks</button>
+        <button id="btnDrag" class="tog off">Drag Marking: Off</button>
       </div>
       <div class="row" style="margin-top:4px; gap: 10px; align-items: stretch;">
         <button id="btnHire" class="primary">Hire Worker (Cost: 3)</button>
@@ -157,7 +158,7 @@
 
   <div class="panel hint">
     <div class="small">
-      Controls: drag with one finger to pan • pinch to zoom • tap to mark/unmark • workers avoid unreachable marks.
+      Controls: drag with one finger to pan • pinch to zoom • tap to mark/unmark • enable drag marking to mark/unmark rectangles • workers avoid unreachable marks.
     </div>
   </div>
 
@@ -172,6 +173,7 @@
   const kDebris  = document.getElementById('kDebris');
   const kDumped  = document.getElementById('kDumped');
   const btnHire  = document.getElementById('btnHire');
+  const btnDrag  = document.getElementById('btnDrag');
 
   let dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
   function resize() {
@@ -253,7 +255,7 @@
         grid[y][x] = {
           solid: true,
           type: def.id,
-          hp: def.hardness * 120,
+          hp: def.hardness,
           marked: false,
           hitPulse: 0,
         };
@@ -421,6 +423,7 @@
   }
 
   // ---------- Workers / AI ----------
+  const STRIKE_INTERVAL = 5; // seconds per strike at 1x speed
   let workers = [];
 
   function createWorker(offset=0) {
@@ -579,26 +582,28 @@
       const c = cellAt(t.x,t.y);
       if (!c || !c.solid || !c.marked) { worker.state='idle'; return; }
 
-      worker.miningT += dt;
-      const def = BlockDefs[c.type - 1];
-      const miningRate = 70 * simSpeed; // hp per second (scaled)
-      c.hp -= miningRate * dt;
-      c.hitPulse = 1;
+      worker.miningT += dt * simSpeed;
+      while (worker.miningT >= STRIKE_INTERVAL) {
+        worker.miningT -= STRIKE_INTERVAL;
+        c.hitPulse = 1;
+        if (c.hp > 0) c.hp -= 1;
 
-      if (c.hp <= 0) {
-        // Mine complete: tile becomes empty; drops debris on that tile
-        c.solid = false;
-        c.marked = false;
-        c.hp = 0;
-        debris.set(keyXY(t.x,t.y), {x:t.x, y:t.y, qty:1});
+        if (c.hp <= 0) {
+          // Mine complete: tile becomes empty; drops debris on that tile
+          c.solid = false;
+          c.marked = false;
+          c.hp = 0;
+          debris.set(keyXY(t.x,t.y), {x:t.x, y:t.y, qty:1});
 
-        // Next: go pick up by stepping onto the cleared tile
-        const p = bfsPath(worker.pos, {x:t.x, y:t.y});
-        if (p) {
-          worker.path = p;
-          worker.state = 'go_pickup';
-        } else {
-          worker.state = 'idle';
+          // Next: go pick up by stepping onto the cleared tile
+          const p = bfsPath(worker.pos, {x:t.x, y:t.y});
+          if (p) {
+            worker.path = p;
+            worker.state = 'go_pickup';
+          } else {
+            worker.state = 'idle';
+          }
+          return;
         }
       }
       return;
@@ -654,10 +659,30 @@
     c.marked = !c.marked;
   }
 
+  function applyRectMarking() {
+    if (!rectSelect.start || !rectSelect.end) return;
+    const minX = Math.min(rectSelect.start.x, rectSelect.end.x);
+    const maxX = Math.max(rectSelect.start.x, rectSelect.end.x);
+    const minY = Math.min(rectSelect.start.y, rectSelect.end.y);
+    const maxY = Math.max(rectSelect.start.y, rectSelect.end.y);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (!inMine(x, y)) continue;
+        const c = cellAt(x, y);
+        if (!c || !c.solid) continue;
+        c.marked = rectSelect.targetMark;
+      }
+    }
+  }
+
   // Pan/zoom gesture support (pointer events)
   const pointers = new Map(); // id -> {x,y}
   let isPanning = false;
   let panStart = {x:0,y:0, camx:0, camy:0};
+
+  let rectangleMode = false;
+  const rectSelect = { active: false, start: null, end: null, targetMark: true };
 
   let pinchStart = null; // {dist, zoom, midx, midy, camx, camy}
   function pointerPos(ev) {
@@ -667,12 +692,26 @@
 
   canvas.addEventListener('pointerdown', (ev) => {
     canvas.setPointerCapture(ev.pointerId);
-    pointers.set(ev.pointerId, pointerPos(ev));
+    const pos = pointerPos(ev);
+    pointers.set(ev.pointerId, pos);
+
+    if (rectangleMode && pointers.size === 1) {
+      const { gx, gy } = isoToGridFromPointer(ev.clientX, ev.clientY);
+      if (inMine(gx, gy)) {
+        const c = cellAt(gx, gy);
+        rectSelect.active = true;
+        rectSelect.start = { x: gx, y: gy };
+        rectSelect.end = { x: gx, y: gy };
+        rectSelect.targetMark = c ? !c.marked : true;
+        pinchStart = null;
+        isPanning = false;
+        return;
+      }
+    }
 
     if (pointers.size === 1) {
       isPanning = true;
-      const p = pointerPos(ev);
-      panStart = { x: p.x, y: p.y, camx: cam.x, camy: cam.y };
+      panStart = { x: pos.x, y: pos.y, camx: cam.x, camy: cam.y };
     } else if (pointers.size === 2) {
       // pinch start
       const pts = [...pointers.values()];
@@ -689,6 +728,11 @@
   canvas.addEventListener('pointermove', (ev) => {
     if (!pointers.has(ev.pointerId)) return;
     pointers.set(ev.pointerId, pointerPos(ev));
+
+    if (rectSelect.active) {
+      rectSelect.end = isoToGridFromPointer(ev.clientX, ev.clientY);
+      return;
+    }
 
     if (pointers.size === 2 && pinchStart) {
       const pts = [...pointers.values()];
@@ -731,6 +775,15 @@
     const pDown = pointers.get(ev.pointerId);
     pointers.delete(ev.pointerId);
 
+    if (rectSelect.active && wasSingle) {
+      rectSelect.end = isoToGridFromPointer(ev.clientX, ev.clientY);
+      applyRectMarking();
+      rectSelect.active = false;
+      isPanning = false;
+      if (pointers.size < 2) pinchStart = null;
+      return;
+    }
+
     if (pointers.size < 2) pinchStart = null;
 
     if (wasSingle) {
@@ -753,6 +806,7 @@
   canvas.addEventListener('pointercancel', (ev) => {
     pointers.delete(ev.pointerId);
     pinchStart = null;
+    rectSelect.active = false;
     isPanning = false;
   }, { passive: true });
 
@@ -780,6 +834,13 @@
       const c = cellAt(x,y);
       if (c && c.marked) { c.marked = false; count++; }
     }
+  });
+  btnDrag.addEventListener('click', (ev) => {
+    rectangleMode = !rectangleMode;
+    ev.currentTarget.textContent = rectangleMode ? 'Drag Marking: On' : 'Drag Marking: Off';
+    ev.currentTarget.classList.toggle('on', rectangleMode);
+    ev.currentTarget.classList.toggle('off', !rectangleMode);
+    rectSelect.active = false;
   });
   btnHire.addEventListener('click', () => {
     const cost = hireCost();
@@ -941,6 +1002,23 @@
     }
   }
 
+  function drawSelectionOverlay() {
+    if (!rectSelect.active || !rectSelect.start || !rectSelect.end) return;
+    const minX = Math.min(rectSelect.start.x, rectSelect.end.x);
+    const maxX = Math.max(rectSelect.start.x, rectSelect.end.x);
+    const minY = Math.min(rectSelect.start.y, rectSelect.end.y);
+    const maxY = Math.max(rectSelect.start.y, rectSelect.end.y);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (!inMine(x, y)) continue;
+        const iso = worldToScreen(x, y);
+        const scr = applyCameraToScreen(iso.x, iso.y);
+        drawTileDiamond(scr.x, scr.y, TILE_W*cam.zoom, TILE_H*cam.zoom, 'rgba(99,199,255,0.08)', 'rgba(99,199,255,0.35)');
+      }
+    }
+  }
+
   function draw() {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
@@ -990,7 +1068,7 @@
           const c = cellAt(x,y);
           if (c && c.solid) {
             const def = BlockDefs[c.type - 1];
-            const heightBase = 18 + def.hardness * 4;
+            const heightBase = 34;
             const bounce = c.hitPulse > 0 ? Math.sin(c.hitPulse * Math.PI) : 0;
             const heightPx = heightBase * cam.zoom * (1 + 0.12 * bounce);
             drawBlockPrism(scr.x, scr.y, def, heightPx);
@@ -1007,7 +1085,7 @@
             }
 
             // damaged indicator
-            const maxHp = def.hardness * 120;
+            const maxHp = def.hardness;
             const hp01 = clamp(c.hp / maxHp, 0, 1);
             if (hp01 < 1) {
               ctx.save();
@@ -1030,6 +1108,7 @@
       // For simplicity, do a second pass after tiles with a stable sort by (x+y).
     }
 
+    drawSelectionOverlay();
     workerDraw.sort((a,b) => (a.isoY - b.isoY));
     for (const wd of workerDraw) drawWorker(wd.wk, wd.sx, wd.sy);
 
