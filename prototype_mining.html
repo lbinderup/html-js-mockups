@@ -119,10 +119,10 @@
       <div class="row" style="justify-content: space-between;">
         <div style="font-weight: 800;">Isometric Mining (Dungeon Keeper–like)</div>
         <div class="kpi">
-          <span>Workers: <b id="kWorkers">4</b></span>
+          <span>Workers: <b id="kWorkers">1</b></span>
           <span>Marked: <b id="kMarked">0</b></span>
           <span>Debris: <b id="kDebris">0</b></span>
-          <span>Dumped: <b id="kDumped">0</b></span>
+          <span>Banked: <b id="kDumped">0</b></span>
         </div>
       </div>
       <div class="row" style="margin-top:8px;">
@@ -130,6 +130,10 @@
         <button id="btnPause" class="tog on">Running</button>
         <button id="btnSpeed" class="tog off">Speed: 1x</button>
         <button id="btnClear" class="tog off">Clear Marks</button>
+      </div>
+      <div class="row" style="margin-top:4px; gap: 10px; align-items: stretch;">
+        <button id="btnHire" class="primary">Hire Worker (Cost: 3)</button>
+        <div class="small">Spend banked debris piles to purchase additional AI workers. Costs rise with each hire.</div>
       </div>
       <div class="small" style="margin-top:8px;">
         Tap blocks to toggle “mine” marking. Workers will only mine targets they can reach via a clear path to an adjacent tile.
@@ -167,6 +171,7 @@
   const kMarked  = document.getElementById('kMarked');
   const kDebris  = document.getElementById('kDebris');
   const kDumped  = document.getElementById('kDumped');
+  const btnHire  = document.getElementById('btnHire');
 
   let dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
   function resize() {
@@ -208,7 +213,8 @@
   // Cell: { solid:boolean, type:int, hp:number, marked:boolean }
   let grid = [];
   let debris = new Map(); // key "x,y" -> {x,y, qty}
-  let dumpedCount = 0;
+  let bankedDebris = 0;
+  let nextWorkerId = 0;
 
   function keyXY(x,y){ return `${x},${y}`; }
   function inMine(x,y){ return x >= 0 && x < COLS && y >= 0 && y < ROWS; }
@@ -229,7 +235,8 @@
 
   function generateMap() {
     debris.clear();
-    dumpedCount = 0;
+    bankedDebris = 0;
+    nextWorkerId = 0;
 
     grid = new Array(ROWS);
     for (let y=0; y<ROWS; y++) {
@@ -248,6 +255,7 @@
           type: def.id,
           hp: def.hardness * 120,
           marked: false,
+          hitPulse: 0,
         };
       }
     }
@@ -279,8 +287,9 @@
     cam.y = canvas.clientHeight * 0.18;
 
     // Reset workers
-    workers = makeWorkers(4);
+    workers = makeWorkers(1);
     kWorkers.textContent = workers.length;
+    updateHireButton();
   }
 
   // ---------- Isometric transforms ----------
@@ -337,9 +346,8 @@
     {x: 0, y:-1},
   ];
 
-  function bfsPath(start, goal, blockedSet) {
+  function bfsPath(start, goal) {
     // goal: {x,y}
-    // blockedSet: Set("x,y") of temporarily blocked (workers)
     const q = [];
     const came = new Map(); // key -> prevKey
     const startK = keyXY(start.x, start.y);
@@ -361,9 +369,8 @@
         const nk = keyXY(nx, ny);
         if (came.has(nk)) continue;
 
-        // walkable, except temporarily blocked
+        // walkable
         if (!isWalkable(nx, ny)) continue;
-        if (blockedSet && blockedSet.has(nk) && nk !== goalK) continue;
 
         came.set(nk, curK);
         q.push({x:nx, y:ny});
@@ -385,7 +392,7 @@
     return path;
   }
 
-  function bfsDistances(start, blockedSet) {
+  function bfsDistances(start) {
     // returns Map key->distance
     const q = [];
     const dist = new Map();
@@ -406,8 +413,6 @@
         if (dist.has(nk)) continue;
 
         if (!isWalkable(nx, ny)) continue;
-        if (blockedSet && blockedSet.has(nk) && nk !== startK) continue;
-
         dist.set(nk, curD + 1);
         q.push({x:nx, y:ny});
       }
@@ -418,40 +423,33 @@
   // ---------- Workers / AI ----------
   let workers = [];
 
-  function makeWorkers(n) {
-    const arr = [];
-    for (let i=0; i<n; i++) {
-      arr.push({
-        id: i,
-        pos: { x: DUMP_POS.x, y: DUMP_POS.y + i }, // stagger
-        // smooth motion
-        fx: DUMP_POS.x,
-        fy: DUMP_POS.y + i,
-        path: [],
-        state: 'idle', // idle | go_mine | mining | go_pickup | go_dump
-        targetBlock: null,  // {x,y}
-        approach: null,     // {x,y}
-        carry: false,
-        miningT: 0,
-      });
-    }
-    return arr;
+  function createWorker(offset=0) {
+    const w = {
+      id: nextWorkerId++,
+      pos: { x: DUMP_POS.x, y: DUMP_POS.y + offset }, // stagger
+      // smooth motion
+      fx: DUMP_POS.x,
+      fy: DUMP_POS.y + offset,
+      path: [],
+      state: 'idle', // idle | go_mine | mining | go_pickup | go_dump
+      targetBlock: null,  // {x,y}
+      approach: null,     // {x,y}
+      carry: false,
+      miningT: 0,
+    };
+    return w;
   }
 
-  function occupiedSet(exceptId) {
-    const s = new Set();
-    for (const w of workers) {
-      if (w.id === exceptId) continue;
-      s.add(keyXY(w.pos.x, w.pos.y));
-    }
-    return s;
+  function makeWorkers(n) {
+    const arr = [];
+    for (let i=0; i<n; i++) arr.push(createWorker(i));
+    return arr;
   }
 
   function findMineJob(worker) {
     // Choose nearest marked block that has at least one adjacent walkable cell reachable.
     // Use BFS distances from worker position.
-    const blocked = occupiedSet(worker.id);
-    const dist = bfsDistances(worker.pos, blocked);
+    const dist = bfsDistances(worker.pos);
 
     let best = null; // {blockX,blockY, approachX,approachY, score}
     for (let y=0; y<ROWS; y++) {
@@ -479,7 +477,7 @@
     if (!best) return null;
 
     // build path to approach
-    const path = bfsPath(worker.pos, {x:best.ax, y:best.ay}, blocked);
+    const path = bfsPath(worker.pos, {x:best.ax, y:best.ay});
     if (!path) return null;
 
     return {
@@ -491,12 +489,11 @@
 
   function stepWorker(worker, dt) {
     const speed = 4.2 * simSpeed; // tiles per second
-    const blocked = occupiedSet(worker.id);
 
     // If carrying and we can see dump path, prioritize completing it.
     if (worker.state === 'idle') {
       if (worker.carry) {
-        const p = bfsPath(worker.pos, DUMP_POS, blocked);
+        const p = bfsPath(worker.pos, DUMP_POS);
         if (p) {
           worker.path = p;
           worker.state = 'go_dump';
@@ -507,7 +504,7 @@
         if (debris.has(dk)) {
           debris.delete(dk);
           worker.carry = true;
-          const p = bfsPath(worker.pos, DUMP_POS, blocked);
+          const p = bfsPath(worker.pos, DUMP_POS);
           if (p) {
             worker.path = p;
             worker.state = 'go_dump';
@@ -529,20 +526,6 @@
     function moveAlongPath() {
       if (!worker.path || worker.path.length === 0) return true;
       const next = worker.path[0];
-
-      // If next is now blocked by someone else, try to re-path once
-      const nk = keyXY(next.x, next.y);
-      if (blocked.has(nk)) {
-        // Try recompute to current goal
-        let goal = next;
-        if (worker.state === 'go_mine' && worker.approach) goal = worker.approach;
-        if (worker.state === 'go_pickup' && worker.targetBlock) goal = worker.targetBlock; // (pickup is the cleared tile)
-        if (worker.state === 'go_dump') goal = DUMP_POS;
-
-        const p = bfsPath(worker.pos, goal, blocked);
-        if (p) worker.path = p;
-        else return false;
-      }
 
       // Smooth step toward next tile center
       const dx = next.x - worker.fx;
@@ -600,6 +583,7 @@
       const def = BlockDefs[c.type - 1];
       const miningRate = 70 * simSpeed; // hp per second (scaled)
       c.hp -= miningRate * dt;
+      c.hitPulse = 1;
 
       if (c.hp <= 0) {
         // Mine complete: tile becomes empty; drops debris on that tile
@@ -609,7 +593,7 @@
         debris.set(keyXY(t.x,t.y), {x:t.x, y:t.y, qty:1});
 
         // Next: go pick up by stepping onto the cleared tile
-        const p = bfsPath(worker.pos, {x:t.x, y:t.y}, blocked);
+        const p = bfsPath(worker.pos, {x:t.x, y:t.y});
         if (p) {
           worker.path = p;
           worker.state = 'go_pickup';
@@ -631,7 +615,7 @@
           debris.delete(dk);
           worker.carry = true;
           // go dump
-          const p = bfsPath(worker.pos, DUMP_POS, blocked);
+          const p = bfsPath(worker.pos, DUMP_POS);
           if (p) {
             worker.path = p;
             worker.state = 'go_dump';
@@ -650,7 +634,8 @@
       if (worker.pos.x === DUMP_POS.x && worker.pos.y === DUMP_POS.y) {
         if (worker.carry) {
           worker.carry = false;
-          dumpedCount++;
+          bankedDebris++;
+          updateHireButton();
         }
         worker.state = 'idle';
         worker.path = [];
@@ -796,8 +781,27 @@
       if (c && c.marked) { c.marked = false; count++; }
     }
   });
+  btnHire.addEventListener('click', () => {
+    const cost = hireCost();
+    if (bankedDebris < cost) return;
+    bankedDebris -= cost;
+    const newWorker = createWorker(workers.length);
+    workers.push(newWorker);
+    kWorkers.textContent = workers.length;
+    updateHireButton();
+  });
 
   function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function hireCost() {
+    const base = 3;
+    const increment = 2;
+    return base + Math.max(0, workers.length - 1) * increment;
+  }
+  function updateHireButton() {
+    const cost = hireCost();
+    btnHire.textContent = `Hire Worker (Cost: ${cost})`;
+    btnHire.disabled = bankedDebris < cost;
+  }
 
   // ---------- Rendering ----------
   function drawTileDiamond(sx, sy, w, h, fill, stroke) {
@@ -825,6 +829,7 @@
 
     // top diamond
     const topY = sy - heightPx;
+    const topCenterY = topY + halfH;
 
     // sides
     // right side quad
@@ -848,7 +853,7 @@
     ctx.fill();
 
     // top
-    drawTileDiamond(sx, topY, tileW, tileH, def.top, 'rgba(0,0,0,0.35)');
+    drawTileDiamond(sx, topCenterY, tileW, tileH, def.top, 'rgba(0,0,0,0.35)');
   }
 
   function shade(hex, amt) {
@@ -986,8 +991,10 @@
           if (c && c.solid) {
             const def = BlockDefs[c.type - 1];
             const heightBase = 18 + def.hardness * 4;
-            const heightPx = heightBase * cam.zoom;
+            const bounce = c.hitPulse > 0 ? Math.sin(c.hitPulse * Math.PI) : 0;
+            const heightPx = heightBase * cam.zoom * (1 + 0.12 * bounce);
             drawBlockPrism(scr.x, scr.y, def, heightPx);
+            if (c.hitPulse > 0) c.hitPulse = Math.max(0, c.hitPulse - frameDt * 3.5);
 
             // marking outline
             if (c.marked) {
@@ -1034,15 +1041,17 @@
     }
     kMarked.textContent = marked;
     kDebris.textContent = debris.size;
-    kDumped.textContent = dumpedCount;
+    kDumped.textContent = bankedDebris;
   }
 
   // ---------- Simulation loop ----------
   let lastT = performance.now();
+  let frameDt = 0;
   function tick(t) {
     const dtRaw = (t - lastT) / 1000;
     lastT = t;
     const dt = Math.min(0.04, dtRaw); // clamp
+    frameDt = dt;
 
     if (!paused) {
       for (const w of workers) stepWorker(w, dt);
