@@ -808,10 +808,21 @@
     ctx.lineTo(sx - w/2, sy);
     ctx.closePath();
     if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-    if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      const prev = ctx.lineWidth;
+      ctx.lineWidth = Math.max(1, cam.zoom);
+      ctx.stroke();
+      ctx.lineWidth = prev;
+    }
   }
 
   function drawBlockPrism(sx, sy, def, heightPx) {
+    const tileW = TILE_W * cam.zoom;
+    const tileH = TILE_H * cam.zoom;
+    const halfW = tileW / 2;
+    const halfH = tileH / 2;
+
     // top diamond
     const topY = sy - heightPx;
 
@@ -819,8 +830,8 @@
     // right side quad
     ctx.beginPath();
     ctx.moveTo(sx, topY);
-    ctx.lineTo(sx + W2, topY + H2);
-    ctx.lineTo(sx + W2, topY + H2 + heightPx);
+    ctx.lineTo(sx + halfW, topY + halfH);
+    ctx.lineTo(sx + halfW, topY + halfH + heightPx);
     ctx.lineTo(sx, topY + heightPx);
     ctx.closePath();
     ctx.fillStyle = shade(def.side, -8);
@@ -829,15 +840,15 @@
     // left side quad
     ctx.beginPath();
     ctx.moveTo(sx, topY);
-    ctx.lineTo(sx - W2, topY + H2);
-    ctx.lineTo(sx - W2, topY + H2 + heightPx);
+    ctx.lineTo(sx - halfW, topY + halfH);
+    ctx.lineTo(sx - halfW, topY + halfH + heightPx);
     ctx.lineTo(sx, topY + heightPx);
     ctx.closePath();
     ctx.fillStyle = shade(def.side, -16);
     ctx.fill();
 
     // top
-    drawTileDiamond(sx, topY, TILE_W, TILE_H, def.top, 'rgba(0,0,0,0.35)');
+    drawTileDiamond(sx, topY, tileW, tileH, def.top, 'rgba(0,0,0,0.35)');
   }
 
   function shade(hex, amt) {
