@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+  />
+  <title>Organic Creep Spread Prototype</title>
+  <style>
+    :root {
+      --sand: #d9c7a3;
+      --sand-dark: #cbb68c;
+      --purple: #7a2cff;
+      --ui: rgba(20, 20, 24, 0.82);
+      --ui2: rgba(255, 255, 255, 0.14);
+      --text: rgba(255, 255, 255, 0.92);
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #0f0f12;
+      overflow: hidden;
+      font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none; /* needed for pinch/drag */
+      display: block;
+    }
+
+    .hud {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      top: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .panel {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--ui);
+      color: var(--text);
+      border: 1px solid var(--ui2);
+      border-radius: 14px;
+      padding: 10px 12px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+
+    button {
+      pointer-events: auto;
+      appearance: none;
+      border: 1px solid var(--ui2);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 650;
+      letter-spacing: 0.2px;
+    }
+    button:active { transform: translateY(1px); }
+
+    .hint {
+      font-size: 12px;
+      opacity: 0.85;
+      line-height: 1.2;
+      max-width: 55vw;
+    }
+
+    .pill {
+      font-size: 12px;
+      opacity: 0.92;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--ui2);
+      background: rgba(255,255,255,0.06);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div class="hud">
+    <div class="panel">
+      <button id="toggle">Retract: OFF</button>
+      <div class="pill" id="stats">Nodes: 0</div>
+    </div>
+
+    <div class="panel hint">
+      Tap to add growth node. Drag to pan. Pinch to zoom.
+      <br/>Retract collapses creep back into itself and removes nodes.
+    </div>
+  </div>
+
+  <script>
+    // ---------- Utilities ----------
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const lerp  = (a, b, t) => a + (b - a) * t;
+
+    function hexToRgb(hex) {
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return m ? {
+        r: parseInt(m[1], 16),
+        g: parseInt(m[2], 16),
+        b: parseInt(m[3], 16)
+      } : { r: 255, g: 0, b: 255 };
+    }
+
+    function mixRgb(a, b, t) {
+      return {
+        r: Math.round(lerp(a.r, b.r, t)),
+        g: Math.round(lerp(a.g, b.g, t)),
+        b: Math.round(lerp(a.b, b.b, t))
+      };
+    }
+
+    // ---------- Lightweight 2D value-noise (deterministic) ----------
+    // Not Perlin, but good enough for "organic" wobble.
+    function hash2(ix, iy, seed) {
+      // 32-bit hash
+      let h = ix * 374761393 + iy * 668265263 + seed * 1442695040888963407n; // seed BigInt
+      // convert BigInt to Number safely-ish by folding:
+      let x = Number(h & 0xffffffffn) >>> 0;
+      x ^= x >> 16; x = Math.imul(x, 2246822507);
+      x ^= x >> 13; x = Math.imul(x, 3266489909);
+      x ^= x >> 16;
+      return (x >>> 0) / 4294967295;
+    }
+
+    function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+    function valueNoise2(x, y, seedBigInt) {
+      const x0 = Math.floor(x), y0 = Math.floor(y);
+      const x1 = x0 + 1, y1 = y0 + 1;
+
+      const sx = smoothstep(x - x0);
+      const sy = smoothstep(y - y0);
+
+      const n00 = hash2(x0, y0, seedBigInt);
+      const n10 = hash2(x1, y0, seedBigInt);
+      const n01 = hash2(x0, y1, seedBigInt);
+      const n11 = hash2(x1, y1, seedBigInt);
+
+      const ix0 = lerp(n00, n10, sx);
+      const ix1 = lerp(n01, n11, sx);
+      return lerp(ix0, ix1, sy);
+    }
+
+    function fbm2(x, y, seedBigInt) {
+      // Fractional Brownian motion (sum of noise octaves)
+      let v = 0;
+      let a = 0.55;
+      let f = 1.0;
+      for (let i = 0; i < 4; i++) {
+        v += a * valueNoise2(x * f, y * f, seedBigInt + BigInt(i * 1013));
+        f *= 2.0;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    // ---------- Triangular map generation ----------
+    // Regular equilateral triangle tiling (fast, predictable, "terrain triangles").
+    // Large map: adjust GRID_W / GRID_H for scale/perf.
+    const TRI_SIZE = 26;      // world units (edge length-ish)
+    const GRID_W   = 90;      // columns of rhombi
+    const GRID_H   = 90;      // rows of rhombi
+
+    // Derived geometry
+    const h = TRI_SIZE * Math.sqrt(3) * 0.5; // equilateral height
+    const mapWidth  = GRID_W * TRI_SIZE;
+    const mapHeight = GRID_H * (2 * h);
+
+    // Each rhombus cell is split into 2 triangles.
+    // We'll store triangles with vertices, centroid, and a Path2D.
+    const triangles = [];
+    function buildTriMap() {
+      triangles.length = 0;
+
+      for (let y = 0; y < GRID_H; y++) {
+        for (let x = 0; x < GRID_W; x++) {
+          // Parallelogram base position
+          // Offset every other row for triangular tiling
+          const ox = x * TRI_SIZE + ((y % 2) * (TRI_SIZE * 0.5));
+          const oy = y * (2 * h);
+
+          // Define a diamond/parallelogram via four points:
+          // p0----p1
+          //  \    /
+          //   p3 p2
+          const p0 = { x: ox,                 y: oy };
+          const p1 = { x: ox + TRI_SIZE,      y: oy };
+          const p2 = { x: ox + TRI_SIZE*0.5,  y: oy + 2*h };
+          const p3 = { x: ox - TRI_SIZE*0.5,  y: oy + 2*h };
+
+          // Split into 2 triangles
+          addTri(p0, p1, p2);
+          addTri(p0, p2, p3);
+        }
+      }
+    }
+
+    function addTri(a, b, c) {
+      const cx = (a.x + b.x + c.x) / 3;
+      const cy = (a.y + b.y + c.y) / 3;
+      const path = new Path2D();
+      path.moveTo(a.x, a.y);
+      path.lineTo(b.x, b.y);
+      path.lineTo(c.x, c.y);
+      path.closePath();
+
+      // Store a simple bbox for optional culling
+      const minX = Math.min(a.x, b.x, c.x);
+      const minY = Math.min(a.y, b.y, c.y);
+      const maxX = Math.max(a.x, b.x, c.x);
+      const maxY = Math.max(a.y, b.y, c.y);
+
+      triangles.push({
+        a, b, c,
+        cx, cy,
+        minX, minY, maxX, maxY,
+        path,
+        creep: 0
+      });
+    }
+
+    // ---------- Creep model ----------
+    // Each node grows a "radius" over time. Influence is angularly modulated into tendrils.
+    // Tendrils widen with distance (sigma grows), so it reads like branching growth.
+    const sources = [];
+    let retractMode = false;
+
+    function addSource(wx, wy) {
+      const seed = BigInt((Math.random() * 1e9) | 0) + 1234567n;
+
+      const tendrilCount = 10 + ((Math.random() * 6) | 0);
+      const tendrils = [];
+      for (let i = 0; i < tendrilCount; i++) {
+        tendrils.push({
+          angle: Math.random() * Math.PI * 2,
+          strength: 0.65 + Math.random() * 0.45
+        });
+      }
+
+      sources.push({
+        x: wx,
+        y: wy,
+        r: 0,
+        growSpeed: 120,     // world units / sec
+        retractSpeed: 260,  // world units / sec
+        maxR: 1500,         // cap
+        seed,
+        tendrils
+      });
+    }
+
+    function angularDelta(a, b) {
+      let d = a - b;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      return d;
+    }
+
+    function tendrilMask(src, angle, dist) {
+      // Base width increases with distance -> tendrils "grow wider"
+      const baseSigma = 0.18;             // narrow near center
+      const widen = clamp(dist / 900, 0, 1);
+      const sigma = baseSigma + widen * 0.55;
+
+      let best = 0;
+      for (const t of src.tendrils) {
+        const d = angularDelta(angle, t.angle);
+        const g = Math.exp(-(d * d) / (2 * sigma * sigma)) * t.strength;
+        if (g > best) best = g;
+      }
+
+      // Add subtle angular noise so tendrils wobble/branch
+      const n = fbm2(
+        (Math.cos(angle) * 2.3 + src.x * 0.002) + dist * 0.003,
+        (Math.sin(angle) * 2.3 + src.y * 0.002) + dist * 0.003,
+        src.seed
+      );
+
+      // Shape: keep only higher values so you get separated tendrils, not a solid disk
+      // (still allows "circular-ish" fill as tendrils widen)
+      const shaped = clamp((best * 1.15 + (n - 0.5) * 0.22) - 0.25, 0, 1);
+
+      return shaped;
+    }
+
+    function influenceAtTriangle(src, tri) {
+      const dx = tri.cx - src.x;
+      const dy = tri.cy - src.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > src.r) return 0;
+
+      const angle = Math.atan2(dy, dx);
+
+      // Edge softness so the front is not razor-sharp
+      const edge = clamp((src.r - dist) / 140, 0, 1);
+
+      // Tendril modulation
+      const mask = tendrilMask(src, angle, dist);
+
+      // Add some radial lumpiness (organic front)
+      const radialN = fbm2(
+        tri.cx * 0.012,
+        tri.cy * 0.012,
+        src.seed + 777n
+      );
+      const radial = clamp(0.82 + (radialN - 0.5) * 0.35, 0, 1);
+
+      // Final influence: tendrils dominate, but edge softness + radial wobble help
+      return clamp(mask * edge * radial, 0, 1);
+    }
+
+    // ---------- Camera (pan/zoom) ----------
+    const cam = {
+      x: mapWidth * 0.5,
+      y: mapHeight * 0.5,
+      scale: 1.0
+    };
+
+    function screenToWorld(sx, sy) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (sx - rect.width  * 0.5) / cam.scale + cam.x;
+      const y = (sy - rect.height * 0.5) / cam.scale + cam.y;
+      return { x, y };
+    }
+
+    function worldToScreen(wx, wy) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (wx - cam.x) * cam.scale + rect.width * 0.5;
+      const y = (wy - cam.y) * cam.scale + rect.height * 0.5;
+      return { x, y };
+    }
+
+    // Clamp camera into bounds with some padding
+    function clampCamera() {
+      const rect = canvas.getBoundingClientRect();
+      const halfW = rect.width  * 0.5 / cam.scale;
+      const halfH = rect.height * 0.5 / cam.scale;
+
+      const pad = 250;
+      cam.x = clamp(cam.x, -pad + halfW, mapWidth + pad - halfW);
+      cam.y = clamp(cam.y, -pad + halfH, mapHeight + pad - halfH);
+      cam.scale = clamp(cam.scale, 0.35, 3.0);
+    }
+
+    // ---------- Rendering ----------
+    const canvas = document.getElementById("c");
+    const ctx = canvas.getContext("2d", { alpha: false });
+
+    const sand = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand").trim());
+    const sandDark = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand-dark").trim());
+    const purple = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--purple").trim());
+
+    function resize() {
+      const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      clampCamera();
+    }
+
+    function draw(dt) {
+      const rect = canvas.getBoundingClientRect();
+
+      // Background
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = "#0f0f12";
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      // Map transform
+      ctx.setTransform(
+        cam.scale, 0,
+        0, cam.scale,
+        rect.width * 0.5 - cam.x * cam.scale,
+        rect.height * 0.5 - cam.y * cam.scale
+      );
+
+      // Optional coarse culling in world space
+      const viewMin = screenToWorld(0, 0);
+      const viewMax = screenToWorld(rect.width, rect.height);
+      const minX = Math.min(viewMin.x, viewMax.x) - 80;
+      const minY = Math.min(viewMin.y, viewMax.y) - 80;
+      const maxX = Math.max(viewMin.x, viewMax.x) + 80;
+      const maxY = Math.max(viewMin.y, viewMax.y) + 80;
+
+      // Triangle fill
+      // Base sand uses subtle variation by centroid noise so triangles read individually.
+      for (const tri of triangles) {
+        if (tri.maxX < minX || tri.minX > maxX || tri.maxY < minY || tri.minY > maxY) continue;
+
+        // sand variation
+        const nv = fbm2(tri.cx * 0.02, tri.cy * 0.02, 999n);
+        const sandT = clamp((nv - 0.35) * 1.25, 0, 1);
+        const base = mixRgb(sand, sandDark, sandT);
+
+        // creep blend
+        const t = tri.creep;
+        const col = mixRgb(base, purple, t);
+
+        ctx.fillStyle = `rgb(${col.r},${col.g},${col.b})`;
+        ctx.fill(tri.path);
+      }
+
+      // Triangle outlines (light)
+      ctx.lineWidth = 1 / cam.scale;
+      ctx.strokeStyle = "rgba(0,0,0,0.10)";
+      for (const tri of triangles) {
+        if (tri.maxX < minX || tri.minX > maxX || tri.maxY < minY || tri.minY > maxY) continue;
+        ctx.stroke(tri.path);
+      }
+
+      // Draw source nodes
+      for (const s of sources) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 10 / cam.scale, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 11.5 / cam.scale, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(0,0,0,0.45)";
+        ctx.lineWidth = 2 / cam.scale;
+        ctx.stroke();
+      }
+    }
+
+    // ---------- Simulation loop ----------
+    let last = performance.now();
+
+    function step(now) {
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now;
+
+      // Update sources
+      for (let i = sources.length - 1; i >= 0; i--) {
+        const s = sources[i];
+        if (!retractMode) {
+          s.r = Math.min(s.maxR, s.r + s.growSpeed * dt);
+        } else {
+          s.r = Math.max(0, s.r - s.retractSpeed * dt);
+          if (s.r <= 0.5) sources.splice(i, 1);
+        }
+      }
+
+      // Update creep per triangle (max influence of any source)
+      // If no sources, decay quickly to 0.
+      if (sources.length === 0) {
+        for (const tri of triangles) tri.creep = 0;
+      } else {
+        for (const tri of triangles) {
+          let v = 0;
+          for (const s of sources) {
+            const inf = influenceAtTriangle(s, tri);
+            if (inf > v) v = inf;
+            if (v > 0.98) break;
+          }
+          // Slight temporal smoothing for nicer motion
+          tri.creep = lerp(tri.creep, v, 0.22);
+        }
+      }
+
+      draw(dt);
+      document.getElementById("stats").textContent = `Nodes: ${sources.length}`;
+
+      requestAnimationFrame(step);
+    }
+
+    // ---------- Input: tap to add nodes, drag/pinch to pan/zoom ----------
+    const pointers = new Map();
+    let isDragging = false;
+    let lastDragWorld = null;
+
+    function getCanvasXY(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function dist2(a, b) {
+      const dx = a.x - b.x, dy = a.y - b.y;
+      return dx*dx + dy*dy;
+    }
+
+    let tapCandidate = null;
+
+    canvas.addEventListener("pointerdown", (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      tapCandidate = {
+        id: e.pointerId,
+        sx: e.clientX,
+        sy: e.clientY,
+        time: performance.now(),
+        moved: false
+      };
+
+      if (pointers.size === 1) {
+        isDragging = true;
+        const w = screenToWorld(e.clientX, e.clientY);
+        lastDragWorld = w;
+      }
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      // mark tap as moved if finger moved enough
+      if (tapCandidate && tapCandidate.id === e.pointerId) {
+        const dx = e.clientX - tapCandidate.sx;
+        const dy = e.clientY - tapCandidate.sy;
+        if (dx*dx + dy*dy > 14*14) tapCandidate.moved = true;
+      }
+
+      if (pointers.size === 1 && isDragging) {
+        const w = screenToWorld(e.clientX, e.clientY);
+        const dx = lastDragWorld.x - w.x;
+        const dy = lastDragWorld.y - w.y;
+        cam.x += dx;
+        cam.y += dy;
+        lastDragWorld = screenToWorld(e.clientX, e.clientY);
+        clampCamera();
+      }
+
+      if (pointers.size === 2) {
+        // pinch zoom + pan
+        const pts = Array.from(pointers.values());
+        const p0 = pts[0], p1 = pts[1];
+        const mid = { x: (p0.x + p1.x) * 0.5, y: (p0.y + p1.y) * 0.5 };
+        const d = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+
+        if (!canvas._pinch) {
+          canvas._pinch = {
+            startDist: d,
+            startScale: cam.scale,
+            startMid: mid,
+            startCam: { x: cam.x, y: cam.y },
+            worldAtMid: screenToWorld(mid.x, mid.y)
+          };
+        } else {
+          const pinch = canvas._pinch;
+          const zoom = d / pinch.startDist;
+          const newScale = clamp(pinch.startScale * zoom, 0.35, 3.0);
+
+          // keep world point under midpoint stable
+          cam.scale = newScale;
+          const nowWorldAtMid = screenToWorld(mid.x, mid.y);
+          cam.x += (pinch.worldAtMid.x - nowWorldAtMid.x);
+          cam.y += (pinch.worldAtMid.y - nowWorldAtMid.y);
+
+          // small pan from moving midpoint
+          const midDx = (pinch.startMid.x - mid.x) / cam.scale;
+          const midDy = (pinch.startMid.y - mid.y) / cam.scale;
+          cam.x += midDx;
+          cam.y += midDy;
+
+          clampCamera();
+        }
+      }
+    });
+
+    canvas.addEventListener("pointerup", (e) => {
+      pointers.delete(e.pointerId);
+
+      if (pointers.size < 2) canvas._pinch = null;
+      if (pointers.size === 0) {
+        isDragging = false;
+        lastDragWorld = null;
+      }
+
+      // tap to add source
+      if (tapCandidate && tapCandidate.id === e.pointerId) {
+        const elapsed = performance.now() - tapCandidate.time;
+        if (!tapCandidate.moved && elapsed < 350) {
+          const w = screenToWorld(e.clientX, e.clientY);
+          addSource(w.x, w.y);
+        }
+      }
+      tapCandidate = null;
+    });
+
+    canvas.addEventListener("pointercancel", (e) => {
+      pointers.delete(e.pointerId);
+      canvas._pinch = null;
+      isDragging = false;
+      lastDragWorld = null;
+      tapCandidate = null;
+    });
+
+    // Mouse wheel zoom for desktop
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const mouse = { x: e.clientX, y: e.clientY };
+      const before = screenToWorld(mouse.x, mouse.y);
+
+      const zoom = Math.exp(-e.deltaY * 0.0012);
+      cam.scale = clamp(cam.scale * zoom, 0.35, 3.0);
+
+      const after = screenToWorld(mouse.x, mouse.y);
+      cam.x += (before.x - after.x);
+      cam.y += (before.y - after.y);
+      clampCamera();
+    }, { passive: false });
+
+    // ---------- UI ----------
+    const toggleBtn = document.getElementById("toggle");
+    toggleBtn.addEventListener("click", () => {
+      retractMode = !retractMode;
+      toggleBtn.textContent = `Retract: ${retractMode ? "ON" : "OFF"}`;
+    });
+
+    // ---------- Init ----------
+    buildTriMap();
+
+    // Start centered, slightly zoomed out for iPhone
+    cam.x = mapWidth * 0.5;
+    cam.y = mapHeight * 0.5;
+    cam.scale = 0.8;
+
+    window.addEventListener("resize", resize);
+    resize();
+
+    requestAnimationFrame(step);
+  </script>
+</body>
+</html>
