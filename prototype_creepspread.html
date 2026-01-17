@@ -106,15 +106,13 @@
 
     // ---- Grid & Graph ----
     const TRI_SIZE = 26;
-    const GRID_W = 70; // Slightly smaller grid to keep graph logic brisk
+    const GRID_W = 70; 
     const GRID_H = 70;
     const h = TRI_SIZE * Math.sqrt(3) * 0.5;
     const mapWidth  = GRID_W * TRI_SIZE;
     const mapHeight = GRID_H * (2 * h);
 
-    // The main data structure
     const triangles = []; 
-    // Spatial lookup for click detection and neighbor finding
     const spatialGrid = new Map(); 
 
     function getSpatialKey(x, y) {
@@ -146,14 +144,11 @@
         }
       }
 
-      // 2. Link Neighbors (The slow part, done once)
-      // Since geometry is perfect, we can use centroid distance.
-      // Neighbors are ~17.3px away.
-      const neighborDist = (TRI_SIZE * Math.sqrt(3) / 3) * 2.1; // roughly
+      // 2. Link Neighbors
+      const neighborDist = (TRI_SIZE * Math.sqrt(3) / 3) * 2.1; 
       
       for (let i = 0; i < triangles.length; i++) {
         const t = triangles[i];
-        // Check nearby spatial buckets
         const sx = Math.floor(t.cx / TRI_SIZE);
         const sy = Math.floor(t.cy / TRI_SIZE);
         
@@ -187,9 +182,9 @@
       const tri = {
         id, a, b, c, cx, cy, path,
         neighbors: [],
-        creep: 0,       // 0 to 1 visualization
-        state: 0,       // 0: Empty, 1: Growing, 2: Full
-        noiseOffset: Math.random() // Visual variation
+        creep: 0,       
+        state: 0,       
+        noiseOffset: Math.random() 
       };
       
       triangles.push(tri);
@@ -200,36 +195,28 @@
     }
 
     // ---- Creep Systems ----
-
-    // System 1: Walkers (The fast branching roots)
     const walkers = [];
 
     class Walker {
       constructor(startTri, dirVec, life, thickness) {
         this.currentTri = startTri;
-        this.dir = dirVec; // {x, y} normalized
+        this.dir = dirVec; 
         this.life = life;
-        this.thickness = thickness; // affects neighbor marking
-        
-        // Mark start immediately
+        this.thickness = thickness; 
         this.mark(startTri);
       }
 
       update() {
         if (this.life <= 0 || !this.currentTri) return false;
 
-        // 1. Find best neighbor in direction
         let bestDot = -2;
         let nextTri = null;
 
         for (const n of this.currentTri.neighbors) {
           const dx = n.cx - this.currentTri.cx;
           const dy = n.cy - this.currentTri.cy;
-          // Normalize
           const len = Math.hypot(dx, dy);
           const dot = (dx/len) * this.dir.x + (dy/len) * this.dir.y;
-
-          // Add some randomness to path
           const noise = (Math.random() - 0.5) * 0.5;
           
           if (dot + noise > bestDot) {
@@ -242,16 +229,13 @@
           this.currentTri = nextTri;
           this.mark(nextTri);
           
-          // Chance to branch
           if (this.life > 5 && Math.random() < 0.15) {
-            // Diverge angle
             const angle = Math.atan2(this.dir.y, this.dir.x);
             const newAngle = angle + (Math.random() < 0.5 ? 0.8 : -0.8);
             const newDir = { x: Math.cos(newAngle), y: Math.sin(newAngle) };
             walkers.push(new Walker(this.currentTri, newDir, this.life * 0.6, this.thickness * 0.8));
           }
         } else {
-          // Dead end
           this.life = 0;
         }
 
@@ -261,9 +245,7 @@
 
       mark(tri) {
         tri.creep = 1.0;
-        tri.state = 2; // Full
-        
-        // If thick, affect neighbors immediately (fat roots)
+        tri.state = 2; 
         if (this.thickness > 1.5) {
           for (const n of tri.neighbors) {
              n.creep = Math.max(n.creep, 0.8);
@@ -274,28 +256,19 @@
     }
 
     function spawnSource(x, y) {
-      // Find closest tri
       let bestDist = 99999;
       let startTri = null;
       
-      const key = getSpatialKey(x, y);
-      // Check surrounding buckets for click accuracy
-      const keysToCheck = [key]; 
-      // (Simplified look up, in a real app check 3x3 buckets)
-      
-      // Brute force nearest in buckets
-      // Or just brute force all because on-click is rare
+      // Brute force nearest search (fast enough for click events)
       for(const t of triangles) {
         const d = (t.cx - x)**2 + (t.cy - y)**2;
         if (d < bestDist) { bestDist = d; startTri = t; }
       }
 
       if (startTri && bestDist < 2500) {
-        // Spawn 6 initial root walkers in a star
         for(let i=0; i<6; i++) {
           const angle = (i / 6) * Math.PI * 2;
           const dir = { x: Math.cos(angle), y: Math.sin(angle) };
-          // Randomize life for asymmetry
           const life = 15 + Math.random() * 15; 
           walkers.push(new Walker(startTri, dir, life, 2.0));
         }
@@ -303,10 +276,8 @@
     }
 
     // ---- Main Loop ----
-    
     let retractMode = false;
     
-    // Rendering vars
     const cam = { x: mapWidth/2, y: mapHeight/2, scale: 0.6 };
     let DPR = 1;
     const canvas = document.getElementById("c");
@@ -345,12 +316,13 @@
     function draw() {
       const rect = canvas.getBoundingClientRect();
       
-      // BG
+      // BG - FIX: Use canvas.width/height (Physical Pixels) instead of rect (CSS Pixels)
+      // because setTransform is Identity here.
       ctx.setTransform(1,0,0,1,0,0);
       ctx.fillStyle = "#0f0f12";
-      ctx.fillRect(0, 0, rect.width, rect.height);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // World
+      // World Transform
       const sx = cam.scale * DPR;
       const sy = cam.scale * DPR;
       const tx = (rect.width * 0.5 - cam.x * cam.scale) * DPR;
@@ -368,27 +340,25 @@
       let activeCount = 0;
 
       for (const tri of triangles) {
-        // Simple Culling
         if (tri.cx < minX || tri.cx > maxX || tri.cy < minY || tri.cy > maxY) continue;
         
-        // Draw logic
         const c = tri.creep;
         if (c > 0.01) {
           activeCount++;
           const base = mixRgb(sand, sandDark, tri.noiseOffset);
-          const finalCol = mixRgb(base, purple, c); // Linear mix looks cleaner for this style
+          const finalCol = mixRgb(base, purple, c);
           
           ctx.fillStyle = `rgb(${finalCol.r},${finalCol.g},${finalCol.b})`;
           ctx.fill(tri.path);
         } else {
-          // Draw faint grid for empty
-          // ctx.strokeStyle = "#1a1a1f";
-          // ctx.lineWidth = 1;
-          // ctx.stroke(tri.path);
+          // UX FIX: Draw faint grid so the user knows where the map is
+          ctx.strokeStyle = "#1a1a1f";
+          // Scale linewidth down when zoomed in so lines stay crisp
+          ctx.lineWidth = 1 / Math.max(0.1, cam.scale);
+          ctx.stroke(tri.path);
         }
       }
       
-      // Stats for debugging
       if (Math.random() < 0.05) {
          document.getElementById("stats").textContent = `Active Cells: ${activeCount}`;
       }
@@ -396,35 +366,24 @@
 
     let lastTime = 0;
     
-    // The Automaton Step
     function step(time) {
       const dt = Math.min(0.06, (time - lastTime) / 1000);
       lastTime = time;
 
-      // 1. Update fast roots (Walkers)
-      // Walkers move every few frames or based on time for speed
-      // Let's make them move 1 step per frame for speed
+      // 1. Update Walkers
       for (let i = walkers.length - 1; i >= 0; i--) {
         if (!walkers[i].update()) {
           walkers.splice(i, 1);
         }
       }
 
-      // 2. Slow Fill (Cellular Automaton)
-      // Iterating backwards or forwards doesn't matter much for soft visual spread
-      // Tuning: "Slowly" means we don't just set state to 2 instantly.
-      
-      const growthRate = 2.0 * dt; // Speed of filling
-      const decayRate = 3.5 * dt;  // Speed of retracting
+      // 2. Slow Fill
+      const growthRate = 2.0 * dt; 
+      const decayRate = 3.5 * dt;
 
-      // We need a pass to check logic, modifying creep directly is fine 
-      // as long as logic is based on state or threshold.
-      
       for (const t of triangles) {
         
         if (retractMode) {
-           // Retract Logic: If I have an EMPTY neighbor, I decay
-           // "Empty" neighbor means neighbor.creep < 0.1 (tolerance)
            if (t.creep > 0) {
              let exposed = false;
              for(const n of t.neighbors) {
@@ -444,34 +403,22 @@
            }
         } 
         else {
-          // Growth Logic
-          
-          // Case A: I am a root (state 2). I stay full.
           if (t.state === 2) {
-             t.creep = 1; // Enforce fullness
+             t.creep = 1; 
           } 
-          
-          // Case B: I am partially growing or empty
           else {
             if (t.creep >= 1.0) {
-              t.state = 2; // Finished growing
+              t.state = 2; 
             } else {
-              // Check neighbors to start/continue growing
-              // If any neighbor is FULL (state 2) or high creep, I start growing
-              // Note: Roots (state 2) trigger growth fast. 
-              // New growth (state 1) triggers growth slower.
-              
               let maxNeighbor = 0;
               for (const n of t.neighbors) {
                 if (n.creep > maxNeighbor) maxNeighbor = n.creep;
               }
               
-              // Only start growing if neighbor is robust enough
               if (maxNeighbor > 0.4) {
-                // Determine speed: fast if next to root, slow if next to mush
                 const speed = (maxNeighbor > 0.9) ? growthRate : (growthRate * 0.3);
                 t.creep += speed;
-                t.state = 1; // Mark as growing
+                t.state = 1; 
               }
             }
           }
@@ -482,7 +429,6 @@
       requestAnimationFrame(step);
     }
 
-
     // ---- Input ----
     const pointers = new Map();
     let isDragging = false;
@@ -490,6 +436,7 @@
     let tapCandidate = null;
 
     canvas.addEventListener("pointerdown", (e) => {
+      canvas.setPointerCapture(e.pointerId); // Better drag handling
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       tapCandidate = { id: e.pointerId, sx: e.clientX, sy: e.clientY, time: performance.now(), moved: false };
       if (pointers.size === 1) {
@@ -502,22 +449,20 @@
       if (!pointers.has(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       
-      // Tap check
       if (tapCandidate && tapCandidate.id === e.pointerId) {
         const d = Math.hypot(e.clientX - tapCandidate.sx, e.clientY - tapCandidate.sy);
         if (d > 10) tapCandidate.moved = true;
       }
 
-      // Pan
       if (pointers.size === 1 && isDragging) {
         const w = screenToWorld(e.clientX, e.clientY);
         cam.x += (lastDragWorld.x - w.x);
         cam.y += (lastDragWorld.y - w.y);
-        lastDragWorld = screenToWorld(e.clientX, e.clientY);
+        // Recalculate lastDragWorld because cam changed
+        lastDragWorld = screenToWorld(e.clientX, e.clientY); 
         clampCamera();
       }
 
-      // Pinch
       if (pointers.size === 2) {
         const pts = Array.from(pointers.values());
         const p0 = pts[0], p1 = pts[1];
@@ -558,7 +503,6 @@
 
     window.addEventListener("resize", resize);
 
-    // Init
     buildGraph();
     resize();
     requestAnimationFrame(step);
