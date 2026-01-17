@@ -6,13 +6,13 @@
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
   />
-  <title>Organic Creep Spread Prototype</title>
+  <title>Organic Creep Spread</title>
   <style>
     :root {
       --sand: #d9c7a3;
       --sand-dark: #cbb68c;
       --purple: #7a2cff;
-      --ui: rgba(20, 20, 24, 0.82);
+      --ui: rgba(20, 20, 24, 0.85);
       --ui2: rgba(255, 255, 255, 0.14);
       --text: rgba(255, 255, 255, 0.92);
     }
@@ -31,8 +31,8 @@
       inset: 0;
       width: 100vw;
       height: 100vh;
-      touch-action: none;
       display: block;
+      touch-action: none;
     }
     .hud {
       position: absolute;
@@ -40,57 +40,36 @@
       right: 12px;
       top: 12px;
       display: flex;
-      gap: 10px;
       align-items: flex-start;
       justify-content: space-between;
       pointer-events: none;
     }
     .panel {
       pointer-events: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
       background: var(--ui);
       color: var(--text);
       border: 1px solid var(--ui2);
-      border-radius: 14px;
-      padding: 10px 12px;
+      border-radius: 12px;
+      padding: 10px 14px;
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
-    .row { display: flex; align-items: center; gap: 10px; }
     button {
       pointer-events: auto;
-      appearance: none;
       border: 1px solid var(--ui2);
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.08);
       color: var(--text);
       padding: 8px 12px;
       border-radius: 8px;
       font-weight: 600;
       font-size: 13px;
       cursor: pointer;
-      transition: background 0.1s;
     }
-    button:hover { background: rgba(255, 255, 255, 0.12); }
     button:active { transform: translateY(1px); }
-    .hint {
-      font-size: 12px;
-      opacity: 0.85;
-      line-height: 1.35;
-      max-width: 280px;
-    }
-    .pill {
-      font-size: 12px;
-      opacity: 0.92;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--ui2);
-      background: rgba(255,255,255,0.06);
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums;
-    }
+    .hint { font-size: 12px; opacity: 0.8; max-width: 250px; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -98,14 +77,13 @@
 
   <div class="hud">
     <div class="panel">
-      <div class="row">
-        <button id="toggle">Retract: OFF</button>
-        <div class="pill" id="stats">Nodes: 0</div>
-      </div>
+      <button id="toggle">Retract: OFF</button>
+      <div style="font-size:12px; opacity:0.8" id="stats">Active Cells: 0</div>
     </div>
     <div class="panel hint">
-      <strong>Organic Growth</strong><br/>
-      Tap to spawn. Nodes now grow thick roots that taper at the tips.
+      Tap to spawn <strong>Root Network</strong>.<br/>
+      Roots expand rapidly. Gaps fill slowly.<br/>
+      Retract peels edges back.
     </div>
   </div>
 
@@ -113,9 +91,10 @@
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const lerp  = (a, b, t) => a + (b - a) * t;
 
+    // ---- Utils ----
     function hexToRgb(hex) {
       const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) } : { r:255,g:0,b:255 };
+      return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) } : { r:0,g:0,b:0 };
     }
     function mixRgb(a, b, t) {
       return { 
@@ -125,48 +104,78 @@
       };
     }
 
-    // ---- Noise ----
-    function hash2(ix, iy, seed) {
-      const X = BigInt(ix);
-      const Y = BigInt(iy);
-      let h = X * 374761393n + Y * 668265263n + seed * 1442695040888963407n;
-      let x = Number(h & 0xffffffffn) >>> 0;
-      x ^= x >> 16; x = Math.imul(x, 2246822507);
-      x ^= x >> 13; x = Math.imul(x, 3266489909);
-      x ^= x >> 16;
-      return (x >>> 0) / 4294967295;
-    }
-    function smoothstep(t) { return t * t * (3 - 2 * t); }
-    function valueNoise2(x, y, seedBigInt) {
-      const x0 = Math.floor(x), y0 = Math.floor(y);
-      const x1 = x0 + 1, y1 = y0 + 1;
-      const sx = smoothstep(x - x0);
-      const sy = smoothstep(y - y0);
-      const n00 = hash2(x0, y0, seedBigInt);
-      const n10 = hash2(x1, y0, seedBigInt);
-      const n01 = hash2(x0, y1, seedBigInt);
-      const n11 = hash2(x1, y1, seedBigInt);
-      return lerp(lerp(n00, n10, sx), lerp(n01, n11, sx), sy);
-    }
-    function fbm2(x, y, seedBigInt) {
-      let v = 0, a = 0.55, f = 1.0;
-      for (let i = 0; i < 4; i++) {
-        v += a * valueNoise2(x * f, y * f, seedBigInt + BigInt(i * 1013));
-        f *= 2.0; a *= 0.5;
-      }
-      return v;
-    }
-
-    // ---- Map ----
+    // ---- Grid & Graph ----
     const TRI_SIZE = 26;
-    const GRID_W   = 90;
-    const GRID_H   = 90;
+    const GRID_W = 70; // Slightly smaller grid to keep graph logic brisk
+    const GRID_H = 70;
     const h = TRI_SIZE * Math.sqrt(3) * 0.5;
     const mapWidth  = GRID_W * TRI_SIZE;
     const mapHeight = GRID_H * (2 * h);
-    const triangles = [];
 
-    function addTri(a, b, c) {
+    // The main data structure
+    const triangles = []; 
+    // Spatial lookup for click detection and neighbor finding
+    const spatialGrid = new Map(); 
+
+    function getSpatialKey(x, y) {
+      const gX = Math.floor(x / TRI_SIZE);
+      const gY = Math.floor(y / TRI_SIZE);
+      return `${gX},${gY}`;
+    }
+
+    function buildGraph() {
+      triangles.length = 0;
+      spatialGrid.clear();
+
+      // 1. Generate Geometry
+      let idCounter = 0;
+      for (let y = 0; y < GRID_H; y++) {
+        for (let x = 0; x < GRID_W; x++) {
+          const ox = x * TRI_SIZE + ((y % 2) * (TRI_SIZE * 0.5));
+          const oy = y * (2 * h);
+          
+          const p0 = { x: ox,                 y: oy };
+          const p1 = { x: ox + TRI_SIZE,      y: oy };
+          const p2 = { x: ox + TRI_SIZE*0.5,  y: oy + 2*h };
+          const p3 = { x: ox - TRI_SIZE*0.5,  y: oy + 2*h };
+
+          // Tri 1 (Pointing Down)
+          createTri(p0, p1, p2, idCounter++);
+          // Tri 2 (Pointing Up)
+          createTri(p0, p2, p3, idCounter++);
+        }
+      }
+
+      // 2. Link Neighbors (The slow part, done once)
+      // Since geometry is perfect, we can use centroid distance.
+      // Neighbors are ~17.3px away.
+      const neighborDist = (TRI_SIZE * Math.sqrt(3) / 3) * 2.1; // roughly
+      
+      for (let i = 0; i < triangles.length; i++) {
+        const t = triangles[i];
+        // Check nearby spatial buckets
+        const sx = Math.floor(t.cx / TRI_SIZE);
+        const sy = Math.floor(t.cy / TRI_SIZE);
+        
+        for(let nx = sx-1; nx <= sx+1; nx++) {
+          for(let ny = sy-1; ny <= sy+1; ny++) {
+            const key = `${nx},${ny}`;
+            const bucket = spatialGrid.get(key);
+            if(!bucket) continue;
+            
+            for(const other of bucket) {
+              if (other === t) continue;
+              const d = (t.cx - other.cx)**2 + (t.cy - other.cy)**2;
+              if (d < neighborDist * neighborDist) {
+                t.neighbors.push(other);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function createTri(a, b, c, id) {
       const cx = (a.x + b.x + c.x) / 3;
       const cy = (a.y + b.y + c.y) / 3;
       const path = new Path2D();
@@ -174,128 +183,135 @@
       path.lineTo(b.x, b.y);
       path.lineTo(c.x, c.y);
       path.closePath();
-      const minX = Math.min(a.x, b.x, c.x);
-      const minY = Math.min(a.y, b.y, c.y);
-      const maxX = Math.max(a.x, b.x, c.x);
-      const maxY = Math.max(a.y, b.y, c.y);
-      triangles.push({ a,b,c,cx,cy,minX,minY,maxX,maxY,path, creep: 0 });
+
+      const tri = {
+        id, a, b, c, cx, cy, path,
+        neighbors: [],
+        creep: 0,       // 0 to 1 visualization
+        state: 0,       // 0: Empty, 1: Growing, 2: Full
+        noiseOffset: Math.random() // Visual variation
+      };
+      
+      triangles.push(tri);
+      
+      const key = getSpatialKey(cx, cy);
+      if(!spatialGrid.has(key)) spatialGrid.set(key, []);
+      spatialGrid.get(key).push(tri);
     }
-    
-    function buildTriMap() {
-      triangles.length = 0;
-      for (let y = 0; y < GRID_H; y++) {
-        for (let x = 0; x < GRID_W; x++) {
-          const ox = x * TRI_SIZE + ((y % 2) * (TRI_SIZE * 0.5));
-          const oy = y * (2 * h);
-          const p0 = { x: ox,                 y: oy };
-          const p1 = { x: ox + TRI_SIZE,      y: oy };
-          const p2 = { x: ox + TRI_SIZE*0.5,  y: oy + 2*h };
-          const p3 = { x: ox - TRI_SIZE*0.5,  y: oy + 2*h };
-          addTri(p0, p1, p2);
-          addTri(p0, p2, p3);
+
+    // ---- Creep Systems ----
+
+    // System 1: Walkers (The fast branching roots)
+    const walkers = [];
+
+    class Walker {
+      constructor(startTri, dirVec, life, thickness) {
+        this.currentTri = startTri;
+        this.dir = dirVec; // {x, y} normalized
+        this.life = life;
+        this.thickness = thickness; // affects neighbor marking
+        
+        // Mark start immediately
+        this.mark(startTri);
+      }
+
+      update() {
+        if (this.life <= 0 || !this.currentTri) return false;
+
+        // 1. Find best neighbor in direction
+        let bestDot = -2;
+        let nextTri = null;
+
+        for (const n of this.currentTri.neighbors) {
+          const dx = n.cx - this.currentTri.cx;
+          const dy = n.cy - this.currentTri.cy;
+          // Normalize
+          const len = Math.hypot(dx, dy);
+          const dot = (dx/len) * this.dir.x + (dy/len) * this.dir.y;
+
+          // Add some randomness to path
+          const noise = (Math.random() - 0.5) * 0.5;
+          
+          if (dot + noise > bestDot) {
+            bestDot = dot + noise;
+            nextTri = n;
+          }
+        }
+
+        if (nextTri) {
+          this.currentTri = nextTri;
+          this.mark(nextTri);
+          
+          // Chance to branch
+          if (this.life > 5 && Math.random() < 0.15) {
+            // Diverge angle
+            const angle = Math.atan2(this.dir.y, this.dir.x);
+            const newAngle = angle + (Math.random() < 0.5 ? 0.8 : -0.8);
+            const newDir = { x: Math.cos(newAngle), y: Math.sin(newAngle) };
+            walkers.push(new Walker(this.currentTri, newDir, this.life * 0.6, this.thickness * 0.8));
+          }
+        } else {
+          // Dead end
+          this.life = 0;
+        }
+
+        this.life--;
+        return true;
+      }
+
+      mark(tri) {
+        tri.creep = 1.0;
+        tri.state = 2; // Full
+        
+        // If thick, affect neighbors immediately (fat roots)
+        if (this.thickness > 1.5) {
+          for (const n of tri.neighbors) {
+             n.creep = Math.max(n.creep, 0.8);
+             n.state = 2; 
+          }
         }
       }
     }
 
-    // ---- Logic ----
-    const sources = [];
+    function spawnSource(x, y) {
+      // Find closest tri
+      let bestDist = 99999;
+      let startTri = null;
+      
+      const key = getSpatialKey(x, y);
+      // Check surrounding buckets for click accuracy
+      const keysToCheck = [key]; 
+      // (Simplified look up, in a real app check 3x3 buckets)
+      
+      // Brute force nearest in buckets
+      // Or just brute force all because on-click is rare
+      for(const t of triangles) {
+        const d = (t.cx - x)**2 + (t.cy - y)**2;
+        if (d < bestDist) { bestDist = d; startTri = t; }
+      }
+
+      if (startTri && bestDist < 2500) {
+        // Spawn 6 initial root walkers in a star
+        for(let i=0; i<6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+          // Randomize life for asymmetry
+          const life = 15 + Math.random() * 15; 
+          walkers.push(new Walker(startTri, dir, life, 2.0));
+        }
+      }
+    }
+
+    // ---- Main Loop ----
+    
     let retractMode = false;
-
-    function addSource(wx, wy) {
-      const seed = BigInt((Math.random() * 1e9) | 0) + 1234567n;
-      // Generate tendrils as peaks in a polar graph
-      const tendrilCount = 5 + ((Math.random() * 4) | 0);
-      const tendrils = [];
-      
-      // Distribute angles roughly evenly but with randomness
-      let angle = Math.random() * Math.PI * 2;
-      const step = (Math.PI * 2) / tendrilCount;
-      
-      for (let i = 0; i < tendrilCount; i++) {
-        const a = angle + (Math.random() - 0.5) * step * 0.8;
-        tendrils.push({ 
-          angle: a, 
-          // How "sharp" the root is. Higher = thinner spike.
-          width: 2.0 + Math.random() * 2.0, 
-          // Relative length of this specific root
-          lengthScale: 0.7 + Math.random() * 0.4 
-        });
-        angle += step;
-      }
-      
-      sources.push({ 
-        x: wx, y: wy, 
-        r: 0, 
-        growSpeed: 120, retractSpeed: 200, 
-        maxR: 1200, 
-        seed, tendrils 
-      });
-    }
-
-    function angularDelta(a, b) {
-      let d = a - b;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      return d;
-    }
-
-    function influenceAtTriangle(src, tri) {
-      // 1. Basic Distance
-      const dx = tri.cx - src.x;
-      const dy = tri.cy - src.y;
-      let dist = Math.hypot(dx, dy);
-      
-      // Optimization: Hard cut beyond max possible growth
-      if (dist > src.r + 50) return 0;
-      if (dist < 1) dist = 1;
-
-      // 2. Domain Warping (The "Wiggle")
-      // We distort the angle calculation based on distance.
-      // This makes the tendrils snake instead of shooting straight out.
-      const rawAngle = Math.atan2(dy, dx);
-      // Noise frequency increases with distance
-      const warp = fbm2(src.x + dist * 0.006, src.y + dist * 0.006, src.seed) * 2.0 - 1.0; 
-      // Twist strength
-      const angle = rawAngle + warp * 0.4; 
-
-      // 3. Polar Shape Definition
-      // Start with a base radius (the thick center)
-      // src.r is the current animation state (growing from 0 to maxR)
-      const coreRadius = src.r * 0.25; 
-      
-      let maxRadiusAtThisAngle = coreRadius;
-      
-      // Add tendrils to the radius map
-      for (const t of src.tendrils) {
-        const dTheta = angularDelta(angle, t.angle);
-        // Gaussian spike function: e^(-x^2)
-        // This creates a shape that is wide at the center (dTheta near 0) and tapers off.
-        const shape = Math.exp( - (dTheta * dTheta) * t.width );
-        
-        // Add this spike's length to the radius
-        maxRadiusAtThisAngle += (src.r * 0.8 * t.lengthScale) * shape;
-      }
-
-      // 4. Edge Noise
-      // Add some roughness to the calculated boundary
-      const edgeNoise = fbm2(tri.cx * 0.02, tri.cy * 0.02, src.seed + 100n);
-      maxRadiusAtThisAngle += (edgeNoise - 0.5) * 60;
-
-      // 5. Compute Intensity
-      // If we are well inside the maxRadius, we are 100% creep.
-      // If we are near the edge, fade out.
-      const distRatio = dist / maxRadiusAtThisAngle;
-      
-      // Sharp organic edge
-      return 1.0 - smoothstep(distRatio * distRatio * distRatio); 
-    }
-
-    // ---- Render & Camera ----
-    const cam = { x: mapWidth * 0.5, y: mapHeight * 0.5, scale: 0.8 };
+    
+    // Rendering vars
+    const cam = { x: mapWidth/2, y: mapHeight/2, scale: 0.6 };
     let DPR = 1;
     const canvas = document.getElementById("c");
     const ctx = canvas.getContext("2d", { alpha: false });
-
+    
     const sand = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand").trim());
     const sandDark = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand-dark").trim());
     const purple = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--purple").trim());
@@ -311,18 +327,16 @@
       const rect = canvas.getBoundingClientRect();
       const halfW = rect.width  * 0.5 / cam.scale;
       const halfH = rect.height * 0.5 / cam.scale;
-      const pad = 300;
+      const pad = 100;
       cam.x = clamp(cam.x, -pad + halfW, mapWidth + pad - halfW);
       cam.y = clamp(cam.y, -pad + halfH, mapHeight + pad - halfH);
-      cam.scale = clamp(cam.scale, 0.25, 4.0);
+      cam.scale = clamp(cam.scale, 0.25, 3.0);
     }
-
+    
     function resize() {
-      DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-      const w = Math.floor(window.innerWidth * DPR);
-      const h = Math.floor(window.innerHeight * DPR);
-      canvas.width = w;
-      canvas.height = h;
+      DPR = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * DPR;
+      canvas.height = window.innerHeight * DPR;
       canvas.style.width = window.innerWidth + "px";
       canvas.style.height = window.innerHeight + "px";
       clampCamera();
@@ -331,12 +345,12 @@
     function draw() {
       const rect = canvas.getBoundingClientRect();
       
-      // Bg
+      // BG
       ctx.setTransform(1,0,0,1,0,0);
       ctx.fillStyle = "#0f0f12";
       ctx.fillRect(0, 0, rect.width, rect.height);
-
-      // Transform
+      
+      // World
       const sx = cam.scale * DPR;
       const sy = cam.scale * DPR;
       const tx = (rect.width * 0.5 - cam.x * cam.scale) * DPR;
@@ -346,106 +360,136 @@
       // Culling
       const viewMin = screenToWorld(0, 0);
       const viewMax = screenToWorld(rect.width, rect.height);
-      const minX = Math.min(viewMin.x, viewMax.x) - 100;
-      const minY = Math.min(viewMin.y, viewMax.y) - 100;
-      const maxX = Math.max(viewMin.x, viewMax.x) + 100;
-      const maxY = Math.max(viewMin.y, viewMax.y) + 100;
+      const minX = Math.min(viewMin.x, viewMax.x) - 50;
+      const minY = Math.min(viewMin.y, viewMax.y) - 50;
+      const maxX = Math.max(viewMin.x, viewMax.x) + 50;
+      const maxY = Math.max(viewMin.y, viewMax.y) + 50;
+
+      let activeCount = 0;
 
       for (const tri of triangles) {
-        if (tri.maxX < minX || tri.minX > maxX || tri.maxY < minY || tri.minY > maxY) continue;
-
-        const nv = fbm2(tri.cx * 0.02, tri.cy * 0.02, 999n);
-        const sandT = clamp((nv - 0.35) * 1.25, 0, 1);
-        const base = mixRgb(sand, sandDark, sandT);
-
-        const t = clamp(tri.creep, 0, 1);
-        // Non-linear color mix for sharper visuals
-        const t2 = smoothstep(t);
-        const col = mixRgb(base, purple, t2);
-
-        ctx.fillStyle = `rgb(${col.r},${col.g},${col.b})`;
-        ctx.fill(tri.path);
+        // Simple Culling
+        if (tri.cx < minX || tri.cx > maxX || tri.cy < minY || tri.cy > maxY) continue;
+        
+        // Draw logic
+        const c = tri.creep;
+        if (c > 0.01) {
+          activeCount++;
+          const base = mixRgb(sand, sandDark, tri.noiseOffset);
+          const finalCol = mixRgb(base, purple, c); // Linear mix looks cleaner for this style
+          
+          ctx.fillStyle = `rgb(${finalCol.r},${finalCol.g},${finalCol.b})`;
+          ctx.fill(tri.path);
+        } else {
+          // Draw faint grid for empty
+          // ctx.strokeStyle = "#1a1a1f";
+          // ctx.lineWidth = 1;
+          // ctx.stroke(tri.path);
+        }
       }
       
-      // Grid
-      ctx.lineWidth = 1 / cam.scale;
-      ctx.strokeStyle = "rgba(0,0,0,0.15)";
-      for (const tri of triangles) {
-        if (tri.maxX < minX || tri.minX > maxX || tri.maxY < minY || tri.minY > maxY) continue;
-        ctx.stroke(tri.path);
-      }
-
-      // Nodes
-      for (const s of sources) {
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, 8 / cam.scale, 0, Math.PI * 2);
-        ctx.fillStyle = "#fff";
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, 10 / cam.scale, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(0,0,0,0.5)";
-        ctx.lineWidth = 2 / cam.scale;
-        ctx.stroke();
+      // Stats for debugging
+      if (Math.random() < 0.05) {
+         document.getElementById("stats").textContent = `Active Cells: ${activeCount}`;
       }
     }
 
-    let last = performance.now();
-    function step(now) {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
+    let lastTime = 0;
+    
+    // The Automaton Step
+    function step(time) {
+      const dt = Math.min(0.06, (time - lastTime) / 1000);
+      lastTime = time;
 
-      // Update growth
-      for (let i = sources.length - 1; i >= 0; i--) {
-        const s = sources[i];
-        if (!retractMode) {
-          // Slow down growth as it gets huge for better pacing
-          const rate = s.growSpeed * (1 - (s.r / (s.maxR * 1.2)));
-          if(s.r < s.maxR) s.r += Math.max(10, rate) * dt;
-        } else {
-          s.r -= s.retractSpeed * dt;
-          if (s.r <= 1) sources.splice(i, 1);
+      // 1. Update fast roots (Walkers)
+      // Walkers move every few frames or based on time for speed
+      // Let's make them move 1 step per frame for speed
+      for (let i = walkers.length - 1; i >= 0; i--) {
+        if (!walkers[i].update()) {
+          walkers.splice(i, 1);
         }
       }
 
-      // Update Triangles
-      if (sources.length === 0) {
-        if(triangles[0].creep > 0.01) {
-           for (const tri of triangles) tri.creep *= 0.9; // fade out if empty
-        }
-      } else {
-        for (const tri of triangles) {
-          let target = 0;
-          // Optimization: Pre-check distance
-          let inRange = false;
-          for (const s of sources) {
-             // quick rect check
-             if (Math.abs(s.x - tri.cx) > s.r + 50) continue;
-             if (Math.abs(s.y - tri.cy) > s.r + 50) continue;
+      // 2. Slow Fill (Cellular Automaton)
+      // Iterating backwards or forwards doesn't matter much for soft visual spread
+      // Tuning: "Slowly" means we don't just set state to 2 instantly.
+      
+      const growthRate = 2.0 * dt; // Speed of filling
+      const decayRate = 3.5 * dt;  // Speed of retracting
+
+      // We need a pass to check logic, modifying creep directly is fine 
+      // as long as logic is based on state or threshold.
+      
+      for (const t of triangles) {
+        
+        if (retractMode) {
+           // Retract Logic: If I have an EMPTY neighbor, I decay
+           // "Empty" neighbor means neighbor.creep < 0.1 (tolerance)
+           if (t.creep > 0) {
+             let exposed = false;
+             for(const n of t.neighbors) {
+               if(n.creep < 0.2) {
+                 exposed = true; 
+                 break;
+               }
+             }
              
-             const inf = influenceAtTriangle(s, tri);
-             // Soft blend (max)
-             if (inf > target) target = inf;
-             if (target >= 1.0) break; 
+             if(exposed) {
+               t.creep -= decayRate;
+               if(t.creep <= 0) {
+                 t.creep = 0;
+                 t.state = 0;
+               }
+             }
+           }
+        } 
+        else {
+          // Growth Logic
+          
+          // Case A: I am a root (state 2). I stay full.
+          if (t.state === 2) {
+             t.creep = 1; // Enforce fullness
+          } 
+          
+          // Case B: I am partially growing or empty
+          else {
+            if (t.creep >= 1.0) {
+              t.state = 2; // Finished growing
+            } else {
+              // Check neighbors to start/continue growing
+              // If any neighbor is FULL (state 2) or high creep, I start growing
+              // Note: Roots (state 2) trigger growth fast. 
+              // New growth (state 1) triggers growth slower.
+              
+              let maxNeighbor = 0;
+              for (const n of t.neighbors) {
+                if (n.creep > maxNeighbor) maxNeighbor = n.creep;
+              }
+              
+              // Only start growing if neighbor is robust enough
+              if (maxNeighbor > 0.4) {
+                // Determine speed: fast if next to root, slow if next to mush
+                const speed = (maxNeighbor > 0.9) ? growthRate : (growthRate * 0.3);
+                t.creep += speed;
+                t.state = 1; // Mark as growing
+              }
+            }
           }
-          // Smooth animate
-          const rate = target > tri.creep ? 2.5 : 1.0; 
-          tri.creep += (target - tri.creep) * rate * dt;
         }
       }
 
       draw();
-      document.getElementById("stats").textContent = `Nodes: ${sources.length}`;
       requestAnimationFrame(step);
     }
 
-    // ---- Input (Standard) ----
+
+    // ---- Input ----
     const pointers = new Map();
     let isDragging = false;
     let lastDragWorld = null;
     let tapCandidate = null;
 
     canvas.addEventListener("pointerdown", (e) => {
-      canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       tapCandidate = { id: e.pointerId, sx: e.clientX, sy: e.clientY, time: performance.now(), moved: false };
       if (pointers.size === 1) {
@@ -457,9 +501,14 @@
     canvas.addEventListener("pointermove", (e) => {
       if (!pointers.has(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      
+      // Tap check
       if (tapCandidate && tapCandidate.id === e.pointerId) {
-        if (Math.hypot(e.clientX - tapCandidate.sx, e.clientY - tapCandidate.sy) > 10) tapCandidate.moved = true;
+        const d = Math.hypot(e.clientX - tapCandidate.sx, e.clientY - tapCandidate.sy);
+        if (d > 10) tapCandidate.moved = true;
       }
+
+      // Pan
       if (pointers.size === 1 && isDragging) {
         const w = screenToWorld(e.clientX, e.clientY);
         cam.x += (lastDragWorld.x - w.x);
@@ -467,19 +516,22 @@
         lastDragWorld = screenToWorld(e.clientX, e.clientY);
         clampCamera();
       }
+
+      // Pinch
       if (pointers.size === 2) {
         const pts = Array.from(pointers.values());
         const p0 = pts[0], p1 = pts[1];
-        const mid = { x: (p0.x + p1.x) * 0.5, y: (p0.y + p1.y) * 0.5 };
-        const d = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+        const mid = { x: (p0.x + p1.x)*0.5, y: (p0.y + p1.y)*0.5 };
+        const dist = Math.hypot(p1.x-p0.x, p1.y-p0.y);
+
         if (!canvas._pinch) {
-          canvas._pinch = { startDist: d, startScale: cam.scale, worldAtMid: screenToWorld(mid.x, mid.y) };
+          canvas._pinch = { d: dist, s: cam.scale, mid: screenToWorld(mid.x, mid.y) };
         } else {
-          const zoom = d / canvas._pinch.startDist;
-          cam.scale = clamp(canvas._pinch.startScale * zoom, 0.25, 4.0);
-          const nowWorldAtMid = screenToWorld(mid.x, mid.y);
-          cam.x += (canvas._pinch.worldAtMid.x - nowWorldAtMid.x);
-          cam.y += (canvas._pinch.worldAtMid.y - nowWorldAtMid.y);
+          const zoom = dist / canvas._pinch.d;
+          cam.scale = clamp(canvas._pinch.s * zoom, 0.25, 3.0);
+          const nowWorld = screenToWorld(mid.x, mid.y);
+          cam.x += (canvas._pinch.mid.x - nowWorld.x);
+          cam.y += (canvas._pinch.mid.y - nowWorld.y);
           clampCamera();
         }
       }
@@ -489,23 +541,28 @@
       pointers.delete(e.pointerId);
       if (pointers.size < 2) canvas._pinch = null;
       if (pointers.size === 0) isDragging = false;
-      if (tapCandidate && tapCandidate.id === e.pointerId && !tapCandidate.moved && performance.now() - tapCandidate.time < 400) {
-        const w = screenToWorld(e.clientX, e.clientY);
-        addSource(w.x, w.y);
+      
+      if (tapCandidate && tapCandidate.id === e.pointerId && !tapCandidate.moved) {
+        if (performance.now() - tapCandidate.time < 300) {
+          const w = screenToWorld(e.clientX, e.clientY);
+          spawnSource(w.x, w.y);
+        }
       }
       tapCandidate = null;
     });
-    
+
     document.getElementById("toggle").addEventListener("click", () => {
       retractMode = !retractMode;
       document.getElementById("toggle").textContent = `Retract: ${retractMode ? "ON" : "OFF"}`;
     });
 
     window.addEventListener("resize", resize);
+
+    // Init
+    buildGraph();
     resize();
-    buildTriMap();
-    cam.x = mapWidth * 0.5; cam.y = mapHeight * 0.5;
     requestAnimationFrame(step);
+
   </script>
 </body>
 </html>
