@@ -23,6 +23,8 @@
       background: #0f0f12;
       overflow: hidden;
       font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
     }
     canvas {
       position: absolute;
@@ -39,15 +41,15 @@
       top: 12px;
       display: flex;
       gap: 10px;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
       pointer-events: none;
     }
     .panel {
       pointer-events: auto;
       display: flex;
-      align-items: center;
-      gap: 10px;
+      flex-direction: column;
+      gap: 8px;
       background: var(--ui);
       color: var(--text);
       border: 1px solid var(--ui2);
@@ -57,23 +59,31 @@
       -webkit-backdrop-filter: blur(10px);
       box-shadow: 0 10px 30px rgba(0,0,0,0.25);
     }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
     button {
       pointer-events: auto;
       appearance: none;
       border: 1px solid var(--ui2);
       background: rgba(255, 255, 255, 0.06);
       color: var(--text);
-      padding: 10px 12px;
-      border-radius: 12px;
-      font-weight: 650;
-      letter-spacing: 0.2px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.1s;
     }
+    button:hover { background: rgba(255, 255, 255, 0.12); }
     button:active { transform: translateY(1px); }
     .hint {
       font-size: 12px;
       opacity: 0.85;
-      line-height: 1.2;
-      max-width: 55vw;
+      line-height: 1.35;
+      max-width: 280px;
     }
     .pill {
       font-size: 12px;
@@ -83,6 +93,7 @@
       border: 1px solid var(--ui2);
       background: rgba(255,255,255,0.06);
       white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
   </style>
 </head>
@@ -91,13 +102,17 @@
 
   <div class="hud">
     <div class="panel">
-      <button id="toggle">Retract: OFF</button>
-      <div class="pill" id="stats">Nodes: 0</div>
+      <div class="row">
+        <button id="toggle">Retract: OFF</button>
+        <div class="pill" id="stats">Nodes: 0</div>
+      </div>
     </div>
 
     <div class="panel hint">
-      Tap to add growth node. Drag to pan. Pinch to zoom.
-      <br/>Retract collapses creep back into itself and removes nodes.
+      <strong>Controls:</strong><br/>
+      • Tap to spawn Creep Node<br/>
+      • Drag to Pan<br/>
+      • Pinch / Wheel to Zoom<br/>
     </div>
   </div>
 
@@ -110,32 +125,49 @@
       return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) } : { r:255,g:0,b:255 };
     }
     function mixRgb(a, b, t) {
-      return { r: Math.round(lerp(a.r,b.r,t)), g: Math.round(lerp(a.g,b.g,t)), b: Math.round(lerp(a.b,b.b,t)) };
+      return { 
+        r: Math.round(lerp(a.r,b.r,t)), 
+        g: Math.round(lerp(a.g,b.g,t)), 
+        b: Math.round(lerp(a.b,b.b,t)) 
+      };
     }
 
-    // ---- noise ----
+    // ---- noise (Fixed TypeErrors) ----
     function hash2(ix, iy, seed) {
-      let h = ix * 374761393 + iy * 668265263 + seed * 1442695040888963407n;
+      // FIX: Explicitly convert Number coordinates to BigInt before mixing
+      const X = BigInt(ix);
+      const Y = BigInt(iy);
+      
+      // Constants must also be BigInts (n suffix)
+      let h = X * 374761393n + Y * 668265263n + seed * 1442695040888963407n;
+      
       let x = Number(h & 0xffffffffn) >>> 0;
       x ^= x >> 16; x = Math.imul(x, 2246822507);
       x ^= x >> 13; x = Math.imul(x, 3266489909);
       x ^= x >> 16;
       return (x >>> 0) / 4294967295;
     }
+    
     function smoothstep(t) { return t * t * (3 - 2 * t); }
+    
     function valueNoise2(x, y, seedBigInt) {
       const x0 = Math.floor(x), y0 = Math.floor(y);
       const x1 = x0 + 1, y1 = y0 + 1;
+      
       const sx = smoothstep(x - x0);
       const sy = smoothstep(y - y0);
+      
       const n00 = hash2(x0, y0, seedBigInt);
       const n10 = hash2(x1, y0, seedBigInt);
       const n01 = hash2(x0, y1, seedBigInt);
       const n11 = hash2(x1, y1, seedBigInt);
+      
       const ix0 = lerp(n00, n10, sx);
       const ix1 = lerp(n01, n11, sx);
+      
       return lerp(ix0, ix1, sy);
     }
+    
     function fbm2(x, y, seedBigInt) {
       let v = 0, a = 0.55, f = 1.0;
       for (let i = 0; i < 4; i++) {
@@ -170,8 +202,10 @@
       const maxX = Math.max(a.x, b.x, c.x);
       const maxY = Math.max(a.y, b.y, c.y);
 
+      // creep property: 0 = sand, 1 = full creep
       triangles.push({ a,b,c,cx,cy,minX,minY,maxX,maxY,path, creep: 0 });
     }
+    
     function buildTriMap() {
       triangles.length = 0;
       for (let y = 0; y < GRID_H; y++) {
@@ -188,18 +222,32 @@
       }
     }
 
-    // ---- creep ----
+    // ---- creep logic ----
     const sources = [];
     let retractMode = false;
 
     function addSource(wx, wy) {
       const seed = BigInt((Math.random() * 1e9) | 0) + 1234567n;
-      const tendrilCount = 10 + ((Math.random() * 6) | 0);
+      // Tendrils give the "star" shape initially
+      const tendrilCount = 8 + ((Math.random() * 5) | 0);
       const tendrils = [];
       for (let i = 0; i < tendrilCount; i++) {
-        tendrils.push({ angle: Math.random() * Math.PI * 2, strength: 0.65 + Math.random() * 0.45 });
+        tendrils.push({ 
+          angle: Math.random() * Math.PI * 2, 
+          strength: 0.5 + Math.random() * 0.5 
+        });
       }
-      sources.push({ x: wx, y: wy, r: 0, growSpeed: 120, retractSpeed: 260, maxR: 1500, seed, tendrils });
+      
+      sources.push({ 
+        x: wx, 
+        y: wy, 
+        r: 0, 
+        growSpeed: 100, 
+        retractSpeed: 200, 
+        maxR: 1200, 
+        seed, 
+        tendrils 
+      });
     }
 
     function angularDelta(a, b) {
@@ -210,24 +258,29 @@
     }
 
     function tendrilMask(src, angle, dist) {
-      const baseSigma = 0.18;
-      const widen = clamp(dist / 900, 0, 1);
-      const sigma = baseSigma + widen * 0.55;
+      // Organic widening: As creep grows (dist increases relative to max), 
+      // the tendrils get wider (sigma increases)
+      const baseSigma = 0.2; 
+      // normalize distance for width calculation
+      const nDist = clamp(dist / 600, 0, 1);
+      const sigma = baseSigma + nDist * 0.8; 
 
       let best = 0;
       for (const t of src.tendrils) {
         const d = angularDelta(angle, t.angle);
+        // Gaussian falloff based on angle
         const g = Math.exp(-(d * d) / (2 * sigma * sigma)) * t.strength;
         if (g > best) best = g;
       }
 
+      // Add noise to the edge of the tendrils
       const n = fbm2(
-        (Math.cos(angle) * 2.3 + src.x * 0.002) + dist * 0.003,
-        (Math.sin(angle) * 2.3 + src.y * 0.002) + dist * 0.003,
+        (Math.cos(angle) * 3.0 + src.x * 0.01) + dist * 0.005,
+        (Math.sin(angle) * 3.0 + src.y * 0.01) + dist * 0.005,
         src.seed
       );
 
-      return clamp((best * 1.15 + (n - 0.5) * 0.22) - 0.25, 0, 1);
+      return clamp((best * 1.2 + (n - 0.5) * 0.3), 0, 1);
     }
 
     function influenceAtTriangle(src, tri) {
@@ -237,19 +290,22 @@
       if (dist > src.r) return 0;
 
       const angle = Math.atan2(dy, dx);
-      const edge = clamp((src.r - dist) / 140, 0, 1);
+      
+      // Hard edge at current radius
+      const edge = clamp((src.r - dist) / 50, 0, 1);
+      
+      // Tendril shape
       const mask = tendrilMask(src, angle, dist);
 
-      const radialN = fbm2(tri.cx * 0.012, tri.cy * 0.012, src.seed + 777n);
-      const radial = clamp(0.82 + (radialN - 0.5) * 0.35, 0, 1);
+      // Internal noise texture for patchiness
+      const radialN = fbm2(tri.cx * 0.015, tri.cy * 0.015, src.seed + 777n);
+      const radial = clamp(0.7 + (radialN - 0.5) * 0.4, 0, 1);
 
       return clamp(mask * edge * radial, 0, 1);
     }
 
     // ---- camera ----
     const cam = { x: mapWidth * 0.5, y: mapHeight * 0.5, scale: 1.0 };
-
-    // DPR-aware setup: all math stays in CSS pixels; we scale the canvas backing store
     let DPR = 1;
 
     const canvas = document.getElementById("c");
@@ -266,10 +322,10 @@
       const rect = canvas.getBoundingClientRect();
       const halfW = rect.width  * 0.5 / cam.scale;
       const halfH = rect.height * 0.5 / cam.scale;
-      const pad = 250;
+      const pad = 300;
       cam.x = clamp(cam.x, -pad + halfW, mapWidth + pad - halfW);
       cam.y = clamp(cam.y, -pad + halfH, mapHeight + pad - halfH);
-      cam.scale = clamp(cam.scale, 0.35, 3.0);
+      cam.scale = clamp(cam.scale, 0.25, 4.0);
     }
 
     const sand = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand").trim());
@@ -288,95 +344,119 @@
     }
 
     function setTransformCssToDevice(a, b, c, d, e, f) {
-      // setTransform in device pixels, taking CSS-space transform and multiplying by DPR
       ctx.setTransform(a * DPR, b * DPR, c * DPR, d * DPR, e * DPR, f * DPR);
     }
 
     function draw() {
       const rect = canvas.getBoundingClientRect();
 
-      // Screen-space (CSS px) background
+      // Background
       setTransformCssToDevice(1,0,0,1,0,0);
       ctx.fillStyle = "#0f0f12";
       ctx.fillRect(0, 0, rect.width, rect.height);
 
-      // Map transform (world -> CSS px), then scaled into device pixels via helper
+      // World Transform
       const sx = cam.scale;
       const sy = cam.scale;
       const tx = rect.width * 0.5 - cam.x * cam.scale;
       const ty = rect.height * 0.5 - cam.y * cam.scale;
       setTransformCssToDevice(sx, 0, 0, sy, tx, ty);
 
-      // culling in world space (uses CSS rect, correct)
+      // View Culling
       const viewMin = screenToWorld(0, 0);
       const viewMax = screenToWorld(rect.width, rect.height);
-      const minX = Math.min(viewMin.x, viewMax.x) - 80;
-      const minY = Math.min(viewMin.y, viewMax.y) - 80;
-      const maxX = Math.max(viewMin.x, viewMax.x) + 80;
-      const maxY = Math.max(viewMin.y, viewMax.y) + 80;
+      const minX = Math.min(viewMin.x, viewMax.x) - 100;
+      const minY = Math.min(viewMin.y, viewMax.y) - 100;
+      const maxX = Math.max(viewMin.x, viewMax.x) + 100;
+      const maxY = Math.max(viewMin.y, viewMax.y) + 100;
 
+      // Draw Triangles
+      // Optimization: Calculate colors
       for (const tri of triangles) {
         if (tri.maxX < minX || tri.minX > maxX || tri.maxY < minY || tri.minY > maxY) continue;
 
+        // Base ground noise
         const nv = fbm2(tri.cx * 0.02, tri.cy * 0.02, 999n);
         const sandT = clamp((nv - 0.35) * 1.25, 0, 1);
         const base = mixRgb(sand, sandDark, sandT);
 
-        const t = tri.creep;
+        // Mix with Creep
+        const t = smoothstep(tri.creep); // Smoothstep makes the edges cleaner
         const col = mixRgb(base, purple, t);
 
         ctx.fillStyle = `rgb(${col.r},${col.g},${col.b})`;
         ctx.fill(tri.path);
       }
 
+      // Draw Grid Lines (Subtle)
       ctx.lineWidth = 1 / cam.scale;
-      ctx.strokeStyle = "rgba(0,0,0,0.10)";
+      ctx.strokeStyle = "rgba(0,0,0,0.15)";
       for (const tri of triangles) {
         if (tri.maxX < minX || tri.minX > maxX || tri.maxY < minY || tri.minY > maxY) continue;
         ctx.stroke(tri.path);
       }
 
+      // Draw Source Nodes
       for (const s of sources) {
         ctx.beginPath();
-        ctx.arc(s.x, s.y, 10 / cam.scale, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.arc(s.x, s.y, 8 / cam.scale, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
         ctx.fill();
 
         ctx.beginPath();
-        ctx.arc(s.x, s.y, 11.5 / cam.scale, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(0,0,0,0.45)";
+        ctx.arc(s.x, s.y, 10 / cam.scale, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(0,0,0,0.5)";
         ctx.lineWidth = 2 / cam.scale;
         ctx.stroke();
       }
     }
 
-    // ---- loop ----
+    // ---- Loop ----
     let last = performance.now();
     function step(now) {
-      const dt = Math.min(0.033, (now - last) / 1000);
+      const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
+      // Update Creep Sources
       for (let i = sources.length - 1; i >= 0; i--) {
         const s = sources[i];
         if (!retractMode) {
-          s.r = Math.min(s.maxR, s.r + s.growSpeed * dt);
+          if(s.r < s.maxR) s.r += s.growSpeed * dt;
         } else {
-          s.r = Math.max(0, s.r - s.retractSpeed * dt);
-          if (s.r <= 0.5) sources.splice(i, 1);
+          s.r -= s.retractSpeed * dt;
+          if (s.r <= 1) sources.splice(i, 1);
         }
       }
 
+      // Update Map State
       if (sources.length === 0) {
-        for (const tri of triangles) tri.creep = 0;
+        // Quick clear if empty
+        if(triangles[0].creep > 0) {
+           for (const tri of triangles) tri.creep = 0;
+        }
       } else {
+        // Evaluate influence
+        // To optimize: only check triangles somewhat near sources? 
+        // For prototype, brute force with culling is okay for < 10k tris
+        
+        // We only update "active" creep roughly. 
+        // For smooth animation we lerp the values.
         for (const tri of triangles) {
-          let v = 0;
+          let target = 0;
+          
+          // Optimization: Simple distance check before expensive influence calc
+          let inRange = false;
           for (const s of sources) {
-            const inf = influenceAtTriangle(s, tri);
-            if (inf > v) v = inf;
-            if (v > 0.98) break;
+            if (Math.abs(s.x - tri.cx) < s.r && Math.abs(s.y - tri.cy) < s.r) {
+              const inf = influenceAtTriangle(s, tri);
+              if (inf > target) target = inf;
+              if (target >= 1) break;
+            }
           }
-          tri.creep = lerp(tri.creep, v, 0.22);
+          
+          // Animate the creep value towards target
+          const rate = target > tri.creep ? 2.0 : 0.8; 
+          tri.creep += (target - tri.creep) * rate * dt;
         }
       }
 
@@ -385,7 +465,7 @@
       requestAnimationFrame(step);
     }
 
-    // ---- input ----
+    // ---- Input ----
     const pointers = new Map();
     let isDragging = false;
     let lastDragWorld = null;
@@ -410,7 +490,7 @@
       if (tapCandidate && tapCandidate.id === e.pointerId) {
         const dx = e.clientX - tapCandidate.sx;
         const dy = e.clientY - tapCandidate.sy;
-        if (dx*dx + dy*dy > 14*14) tapCandidate.moved = true;
+        if (dx*dx + dy*dy > 100) tapCandidate.moved = true;
       }
 
       if (pointers.size === 1 && isDragging) {
@@ -436,14 +516,15 @@
           };
         } else {
           const pinch = canvas._pinch;
-          const zoom = d / pinch.startDist;
-          cam.scale = clamp(pinch.startScale * zoom, 0.35, 3.0);
+          if (pinch.startDist > 0) {
+            const zoom = d / pinch.startDist;
+            cam.scale = clamp(pinch.startScale * zoom, 0.25, 4.0);
 
-          const nowWorldAtMid = screenToWorld(mid.x, mid.y);
-          cam.x += (pinch.worldAtMid.x - nowWorldAtMid.x);
-          cam.y += (pinch.worldAtMid.y - nowWorldAtMid.y);
-
-          clampCamera();
+            const nowWorldAtMid = screenToWorld(mid.x, mid.y);
+            cam.x += (pinch.worldAtMid.x - nowWorldAtMid.x);
+            cam.y += (pinch.worldAtMid.y - nowWorldAtMid.y);
+            clampCamera();
+          }
         }
       }
     });
@@ -458,7 +539,7 @@
 
       if (tapCandidate && tapCandidate.id === e.pointerId) {
         const elapsed = performance.now() - tapCandidate.time;
-        if (!tapCandidate.moved && elapsed < 350) {
+        if (!tapCandidate.moved && elapsed < 400) {
           const w = screenToWorld(e.clientX, e.clientY);
           addSource(w.x, w.y);
         }
@@ -470,22 +551,19 @@
       pointers.clear();
       canvas._pinch = null;
       isDragging = false;
-      lastDragWorld = null;
-      tapCandidate = null;
     });
 
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
       const before = screenToWorld(e.clientX, e.clientY);
-      const zoom = Math.exp(-e.deltaY * 0.0012);
-      cam.scale = clamp(cam.scale * zoom, 0.35, 3.0);
+      const zoom = Math.exp(-e.deltaY * 0.001);
+      cam.scale = clamp(cam.scale * zoom, 0.25, 4.0);
       const after = screenToWorld(e.clientX, e.clientY);
       cam.x += (before.x - after.x);
       cam.y += (before.y - after.y);
       clampCamera();
     }, { passive: false });
 
-    // ---- UI ----
     document.getElementById("toggle").addEventListener("click", () => {
       retractMode = !retractMode;
       document.getElementById("toggle").textContent = `Retract: ${retractMode ? "ON" : "OFF"}`;
@@ -495,7 +573,7 @@
     buildTriMap();
     cam.x = mapWidth * 0.5;
     cam.y = mapHeight * 0.5;
-    cam.scale = 0.8;
+    cam.scale = 0.6; // Start zoomed out a bit
 
     window.addEventListener("resize", resize);
     resize();
