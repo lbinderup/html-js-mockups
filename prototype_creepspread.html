@@ -59,11 +59,7 @@
       -webkit-backdrop-filter: blur(10px);
       box-shadow: 0 10px 30px rgba(0,0,0,0.25);
     }
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+    .row { display: flex; align-items: center; gap: 10px; }
     button {
       pointer-events: auto;
       appearance: none;
@@ -107,12 +103,9 @@
         <div class="pill" id="stats">Nodes: 0</div>
       </div>
     </div>
-
     <div class="panel hint">
-      <strong>Controls:</strong><br/>
-      • Tap to spawn Creep Node<br/>
-      • Drag to Pan<br/>
-      • Pinch / Wheel to Zoom<br/>
+      <strong>Organic Growth</strong><br/>
+      Tap to spawn. Nodes now grow thick roots that taper at the tips.
     </div>
   </div>
 
@@ -132,62 +125,47 @@
       };
     }
 
-    // ---- noise (Fixed TypeErrors) ----
+    // ---- Noise ----
     function hash2(ix, iy, seed) {
-      // FIX: Explicitly convert Number coordinates to BigInt before mixing
       const X = BigInt(ix);
       const Y = BigInt(iy);
-      
-      // Constants must also be BigInts (n suffix)
       let h = X * 374761393n + Y * 668265263n + seed * 1442695040888963407n;
-      
       let x = Number(h & 0xffffffffn) >>> 0;
       x ^= x >> 16; x = Math.imul(x, 2246822507);
       x ^= x >> 13; x = Math.imul(x, 3266489909);
       x ^= x >> 16;
       return (x >>> 0) / 4294967295;
     }
-    
     function smoothstep(t) { return t * t * (3 - 2 * t); }
-    
     function valueNoise2(x, y, seedBigInt) {
       const x0 = Math.floor(x), y0 = Math.floor(y);
       const x1 = x0 + 1, y1 = y0 + 1;
-      
       const sx = smoothstep(x - x0);
       const sy = smoothstep(y - y0);
-      
       const n00 = hash2(x0, y0, seedBigInt);
       const n10 = hash2(x1, y0, seedBigInt);
       const n01 = hash2(x0, y1, seedBigInt);
       const n11 = hash2(x1, y1, seedBigInt);
-      
-      const ix0 = lerp(n00, n10, sx);
-      const ix1 = lerp(n01, n11, sx);
-      
-      return lerp(ix0, ix1, sy);
+      return lerp(lerp(n00, n10, sx), lerp(n01, n11, sx), sy);
     }
-    
     function fbm2(x, y, seedBigInt) {
       let v = 0, a = 0.55, f = 1.0;
       for (let i = 0; i < 4; i++) {
         v += a * valueNoise2(x * f, y * f, seedBigInt + BigInt(i * 1013));
-        f *= 2.0;
-        a *= 0.5;
+        f *= 2.0; a *= 0.5;
       }
       return v;
     }
 
-    // ---- map ----
+    // ---- Map ----
     const TRI_SIZE = 26;
     const GRID_W   = 90;
     const GRID_H   = 90;
-
     const h = TRI_SIZE * Math.sqrt(3) * 0.5;
     const mapWidth  = GRID_W * TRI_SIZE;
     const mapHeight = GRID_H * (2 * h);
-
     const triangles = [];
+
     function addTri(a, b, c) {
       const cx = (a.x + b.x + c.x) / 3;
       const cy = (a.y + b.y + c.y) / 3;
@@ -196,13 +174,10 @@
       path.lineTo(b.x, b.y);
       path.lineTo(c.x, c.y);
       path.closePath();
-
       const minX = Math.min(a.x, b.x, c.x);
       const minY = Math.min(a.y, b.y, c.y);
       const maxX = Math.max(a.x, b.x, c.x);
       const maxY = Math.max(a.y, b.y, c.y);
-
-      // creep property: 0 = sand, 1 = full creep
       triangles.push({ a,b,c,cx,cy,minX,minY,maxX,maxY,path, creep: 0 });
     }
     
@@ -222,31 +197,38 @@
       }
     }
 
-    // ---- creep logic ----
+    // ---- Logic ----
     const sources = [];
     let retractMode = false;
 
     function addSource(wx, wy) {
       const seed = BigInt((Math.random() * 1e9) | 0) + 1234567n;
-      // Tendrils give the "star" shape initially
-      const tendrilCount = 8 + ((Math.random() * 5) | 0);
+      // Generate tendrils as peaks in a polar graph
+      const tendrilCount = 5 + ((Math.random() * 4) | 0);
       const tendrils = [];
+      
+      // Distribute angles roughly evenly but with randomness
+      let angle = Math.random() * Math.PI * 2;
+      const step = (Math.PI * 2) / tendrilCount;
+      
       for (let i = 0; i < tendrilCount; i++) {
+        const a = angle + (Math.random() - 0.5) * step * 0.8;
         tendrils.push({ 
-          angle: Math.random() * Math.PI * 2, 
-          strength: 0.5 + Math.random() * 0.5 
+          angle: a, 
+          // How "sharp" the root is. Higher = thinner spike.
+          width: 2.0 + Math.random() * 2.0, 
+          // Relative length of this specific root
+          lengthScale: 0.7 + Math.random() * 0.4 
         });
+        angle += step;
       }
       
       sources.push({ 
-        x: wx, 
-        y: wy, 
+        x: wx, y: wy, 
         r: 0, 
-        growSpeed: 100, 
-        retractSpeed: 200, 
+        growSpeed: 120, retractSpeed: 200, 
         maxR: 1200, 
-        seed, 
-        tendrils 
+        seed, tendrils 
       });
     }
 
@@ -257,59 +239,66 @@
       return d;
     }
 
-    function tendrilMask(src, angle, dist) {
-      // Organic widening: As creep grows (dist increases relative to max), 
-      // the tendrils get wider (sigma increases)
-      const baseSigma = 0.2; 
-      // normalize distance for width calculation
-      const nDist = clamp(dist / 600, 0, 1);
-      const sigma = baseSigma + nDist * 0.8; 
-
-      let best = 0;
-      for (const t of src.tendrils) {
-        const d = angularDelta(angle, t.angle);
-        // Gaussian falloff based on angle
-        const g = Math.exp(-(d * d) / (2 * sigma * sigma)) * t.strength;
-        if (g > best) best = g;
-      }
-
-      // Add noise to the edge of the tendrils
-      const n = fbm2(
-        (Math.cos(angle) * 3.0 + src.x * 0.01) + dist * 0.005,
-        (Math.sin(angle) * 3.0 + src.y * 0.01) + dist * 0.005,
-        src.seed
-      );
-
-      return clamp((best * 1.2 + (n - 0.5) * 0.3), 0, 1);
-    }
-
     function influenceAtTriangle(src, tri) {
+      // 1. Basic Distance
       const dx = tri.cx - src.x;
       const dy = tri.cy - src.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > src.r) return 0;
-
-      const angle = Math.atan2(dy, dx);
+      let dist = Math.hypot(dx, dy);
       
-      // Hard edge at current radius
-      const edge = clamp((src.r - dist) / 50, 0, 1);
+      // Optimization: Hard cut beyond max possible growth
+      if (dist > src.r + 50) return 0;
+      if (dist < 1) dist = 1;
+
+      // 2. Domain Warping (The "Wiggle")
+      // We distort the angle calculation based on distance.
+      // This makes the tendrils snake instead of shooting straight out.
+      const rawAngle = Math.atan2(dy, dx);
+      // Noise frequency increases with distance
+      const warp = fbm2(src.x + dist * 0.006, src.y + dist * 0.006, src.seed) * 2.0 - 1.0; 
+      // Twist strength
+      const angle = rawAngle + warp * 0.4; 
+
+      // 3. Polar Shape Definition
+      // Start with a base radius (the thick center)
+      // src.r is the current animation state (growing from 0 to maxR)
+      const coreRadius = src.r * 0.25; 
       
-      // Tendril shape
-      const mask = tendrilMask(src, angle, dist);
+      let maxRadiusAtThisAngle = coreRadius;
+      
+      // Add tendrils to the radius map
+      for (const t of src.tendrils) {
+        const dTheta = angularDelta(angle, t.angle);
+        // Gaussian spike function: e^(-x^2)
+        // This creates a shape that is wide at the center (dTheta near 0) and tapers off.
+        const shape = Math.exp( - (dTheta * dTheta) * t.width );
+        
+        // Add this spike's length to the radius
+        maxRadiusAtThisAngle += (src.r * 0.8 * t.lengthScale) * shape;
+      }
 
-      // Internal noise texture for patchiness
-      const radialN = fbm2(tri.cx * 0.015, tri.cy * 0.015, src.seed + 777n);
-      const radial = clamp(0.7 + (radialN - 0.5) * 0.4, 0, 1);
+      // 4. Edge Noise
+      // Add some roughness to the calculated boundary
+      const edgeNoise = fbm2(tri.cx * 0.02, tri.cy * 0.02, src.seed + 100n);
+      maxRadiusAtThisAngle += (edgeNoise - 0.5) * 60;
 
-      return clamp(mask * edge * radial, 0, 1);
+      // 5. Compute Intensity
+      // If we are well inside the maxRadius, we are 100% creep.
+      // If we are near the edge, fade out.
+      const distRatio = dist / maxRadiusAtThisAngle;
+      
+      // Sharp organic edge
+      return 1.0 - smoothstep(distRatio * distRatio * distRatio); 
     }
 
-    // ---- camera ----
-    const cam = { x: mapWidth * 0.5, y: mapHeight * 0.5, scale: 1.0 };
+    // ---- Render & Camera ----
+    const cam = { x: mapWidth * 0.5, y: mapHeight * 0.5, scale: 0.8 };
     let DPR = 1;
-
     const canvas = document.getElementById("c");
     const ctx = canvas.getContext("2d", { alpha: false });
+
+    const sand = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand").trim());
+    const sandDark = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand-dark").trim());
+    const purple = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--purple").trim());
 
     function screenToWorld(sx, sy) {
       const rect = canvas.getBoundingClientRect();
@@ -328,10 +317,6 @@
       cam.scale = clamp(cam.scale, 0.25, 4.0);
     }
 
-    const sand = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand").trim());
-    const sandDark = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--sand-dark").trim());
-    const purple = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue("--purple").trim());
-
     function resize() {
       DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
       const w = Math.floor(window.innerWidth * DPR);
@@ -343,26 +328,22 @@
       clampCamera();
     }
 
-    function setTransformCssToDevice(a, b, c, d, e, f) {
-      ctx.setTransform(a * DPR, b * DPR, c * DPR, d * DPR, e * DPR, f * DPR);
-    }
-
     function draw() {
       const rect = canvas.getBoundingClientRect();
-
-      // Background
-      setTransformCssToDevice(1,0,0,1,0,0);
+      
+      // Bg
+      ctx.setTransform(1,0,0,1,0,0);
       ctx.fillStyle = "#0f0f12";
       ctx.fillRect(0, 0, rect.width, rect.height);
 
-      // World Transform
-      const sx = cam.scale;
-      const sy = cam.scale;
-      const tx = rect.width * 0.5 - cam.x * cam.scale;
-      const ty = rect.height * 0.5 - cam.y * cam.scale;
-      setTransformCssToDevice(sx, 0, 0, sy, tx, ty);
+      // Transform
+      const sx = cam.scale * DPR;
+      const sy = cam.scale * DPR;
+      const tx = (rect.width * 0.5 - cam.x * cam.scale) * DPR;
+      const ty = (rect.height * 0.5 - cam.y * cam.scale) * DPR;
+      ctx.setTransform(sx, 0, 0, sy, tx, ty);
 
-      // View Culling
+      // Culling
       const viewMin = screenToWorld(0, 0);
       const viewMax = screenToWorld(rect.width, rect.height);
       const minX = Math.min(viewMin.x, viewMax.x) - 100;
@@ -370,25 +351,23 @@
       const maxX = Math.max(viewMin.x, viewMax.x) + 100;
       const maxY = Math.max(viewMin.y, viewMax.y) + 100;
 
-      // Draw Triangles
-      // Optimization: Calculate colors
       for (const tri of triangles) {
         if (tri.maxX < minX || tri.minX > maxX || tri.maxY < minY || tri.minY > maxY) continue;
 
-        // Base ground noise
         const nv = fbm2(tri.cx * 0.02, tri.cy * 0.02, 999n);
         const sandT = clamp((nv - 0.35) * 1.25, 0, 1);
         const base = mixRgb(sand, sandDark, sandT);
 
-        // Mix with Creep
-        const t = smoothstep(tri.creep); // Smoothstep makes the edges cleaner
-        const col = mixRgb(base, purple, t);
+        const t = clamp(tri.creep, 0, 1);
+        // Non-linear color mix for sharper visuals
+        const t2 = smoothstep(t);
+        const col = mixRgb(base, purple, t2);
 
         ctx.fillStyle = `rgb(${col.r},${col.g},${col.b})`;
         ctx.fill(tri.path);
       }
-
-      // Draw Grid Lines (Subtle)
+      
+      // Grid
       ctx.lineWidth = 1 / cam.scale;
       ctx.strokeStyle = "rgba(0,0,0,0.15)";
       for (const tri of triangles) {
@@ -396,13 +375,12 @@
         ctx.stroke(tri.path);
       }
 
-      // Draw Source Nodes
+      // Nodes
       for (const s of sources) {
         ctx.beginPath();
         ctx.arc(s.x, s.y, 8 / cam.scale, 0, Math.PI * 2);
         ctx.fillStyle = "#fff";
         ctx.fill();
-
         ctx.beginPath();
         ctx.arc(s.x, s.y, 10 / cam.scale, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(0,0,0,0.5)";
@@ -411,51 +389,46 @@
       }
     }
 
-    // ---- Loop ----
     let last = performance.now();
     function step(now) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      // Update Creep Sources
+      // Update growth
       for (let i = sources.length - 1; i >= 0; i--) {
         const s = sources[i];
         if (!retractMode) {
-          if(s.r < s.maxR) s.r += s.growSpeed * dt;
+          // Slow down growth as it gets huge for better pacing
+          const rate = s.growSpeed * (1 - (s.r / (s.maxR * 1.2)));
+          if(s.r < s.maxR) s.r += Math.max(10, rate) * dt;
         } else {
           s.r -= s.retractSpeed * dt;
           if (s.r <= 1) sources.splice(i, 1);
         }
       }
 
-      // Update Map State
+      // Update Triangles
       if (sources.length === 0) {
-        // Quick clear if empty
-        if(triangles[0].creep > 0) {
-           for (const tri of triangles) tri.creep = 0;
+        if(triangles[0].creep > 0.01) {
+           for (const tri of triangles) tri.creep *= 0.9; // fade out if empty
         }
       } else {
-        // Evaluate influence
-        // To optimize: only check triangles somewhat near sources? 
-        // For prototype, brute force with culling is okay for < 10k tris
-        
-        // We only update "active" creep roughly. 
-        // For smooth animation we lerp the values.
         for (const tri of triangles) {
           let target = 0;
-          
-          // Optimization: Simple distance check before expensive influence calc
+          // Optimization: Pre-check distance
           let inRange = false;
           for (const s of sources) {
-            if (Math.abs(s.x - tri.cx) < s.r && Math.abs(s.y - tri.cy) < s.r) {
-              const inf = influenceAtTriangle(s, tri);
-              if (inf > target) target = inf;
-              if (target >= 1) break;
-            }
+             // quick rect check
+             if (Math.abs(s.x - tri.cx) > s.r + 50) continue;
+             if (Math.abs(s.y - tri.cy) > s.r + 50) continue;
+             
+             const inf = influenceAtTriangle(s, tri);
+             // Soft blend (max)
+             if (inf > target) target = inf;
+             if (target >= 1.0) break; 
           }
-          
-          // Animate the creep value towards target
-          const rate = target > tri.creep ? 2.0 : 0.8; 
+          // Smooth animate
+          const rate = target > tri.creep ? 2.5 : 1.0; 
           tri.creep += (target - tri.creep) * rate * dt;
         }
       }
@@ -465,7 +438,7 @@
       requestAnimationFrame(step);
     }
 
-    // ---- Input ----
+    // ---- Input (Standard) ----
     const pointers = new Map();
     let isDragging = false;
     let lastDragWorld = null;
@@ -474,9 +447,7 @@
     canvas.addEventListener("pointerdown", (e) => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
       tapCandidate = { id: e.pointerId, sx: e.clientX, sy: e.clientY, time: performance.now(), moved: false };
-
       if (pointers.size === 1) {
         isDragging = true;
         lastDragWorld = screenToWorld(e.clientX, e.clientY);
@@ -486,13 +457,9 @@
     canvas.addEventListener("pointermove", (e) => {
       if (!pointers.has(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
       if (tapCandidate && tapCandidate.id === e.pointerId) {
-        const dx = e.clientX - tapCandidate.sx;
-        const dy = e.clientY - tapCandidate.sy;
-        if (dx*dx + dy*dy > 100) tapCandidate.moved = true;
+        if (Math.hypot(e.clientX - tapCandidate.sx, e.clientY - tapCandidate.sy) > 10) tapCandidate.moved = true;
       }
-
       if (pointers.size === 1 && isDragging) {
         const w = screenToWorld(e.clientX, e.clientY);
         cam.x += (lastDragWorld.x - w.x);
@@ -500,31 +467,20 @@
         lastDragWorld = screenToWorld(e.clientX, e.clientY);
         clampCamera();
       }
-
       if (pointers.size === 2) {
         const pts = Array.from(pointers.values());
         const p0 = pts[0], p1 = pts[1];
         const mid = { x: (p0.x + p1.x) * 0.5, y: (p0.y + p1.y) * 0.5 };
         const d = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-
         if (!canvas._pinch) {
-          canvas._pinch = {
-            startDist: d,
-            startScale: cam.scale,
-            startMid: mid,
-            worldAtMid: screenToWorld(mid.x, mid.y)
-          };
+          canvas._pinch = { startDist: d, startScale: cam.scale, worldAtMid: screenToWorld(mid.x, mid.y) };
         } else {
-          const pinch = canvas._pinch;
-          if (pinch.startDist > 0) {
-            const zoom = d / pinch.startDist;
-            cam.scale = clamp(pinch.startScale * zoom, 0.25, 4.0);
-
-            const nowWorldAtMid = screenToWorld(mid.x, mid.y);
-            cam.x += (pinch.worldAtMid.x - nowWorldAtMid.x);
-            cam.y += (pinch.worldAtMid.y - nowWorldAtMid.y);
-            clampCamera();
-          }
+          const zoom = d / canvas._pinch.startDist;
+          cam.scale = clamp(canvas._pinch.startScale * zoom, 0.25, 4.0);
+          const nowWorldAtMid = screenToWorld(mid.x, mid.y);
+          cam.x += (canvas._pinch.worldAtMid.x - nowWorldAtMid.x);
+          cam.y += (canvas._pinch.worldAtMid.y - nowWorldAtMid.y);
+          clampCamera();
         }
       }
     });
@@ -532,51 +488,23 @@
     canvas.addEventListener("pointerup", (e) => {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) canvas._pinch = null;
-      if (pointers.size === 0) {
-        isDragging = false;
-        lastDragWorld = null;
-      }
-
-      if (tapCandidate && tapCandidate.id === e.pointerId) {
-        const elapsed = performance.now() - tapCandidate.time;
-        if (!tapCandidate.moved && elapsed < 400) {
-          const w = screenToWorld(e.clientX, e.clientY);
-          addSource(w.x, w.y);
-        }
+      if (pointers.size === 0) isDragging = false;
+      if (tapCandidate && tapCandidate.id === e.pointerId && !tapCandidate.moved && performance.now() - tapCandidate.time < 400) {
+        const w = screenToWorld(e.clientX, e.clientY);
+        addSource(w.x, w.y);
       }
       tapCandidate = null;
     });
-
-    canvas.addEventListener("pointercancel", () => {
-      pointers.clear();
-      canvas._pinch = null;
-      isDragging = false;
-    });
-
-    canvas.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      const before = screenToWorld(e.clientX, e.clientY);
-      const zoom = Math.exp(-e.deltaY * 0.001);
-      cam.scale = clamp(cam.scale * zoom, 0.25, 4.0);
-      const after = screenToWorld(e.clientX, e.clientY);
-      cam.x += (before.x - after.x);
-      cam.y += (before.y - after.y);
-      clampCamera();
-    }, { passive: false });
-
+    
     document.getElementById("toggle").addEventListener("click", () => {
       retractMode = !retractMode;
       document.getElementById("toggle").textContent = `Retract: ${retractMode ? "ON" : "OFF"}`;
     });
 
-    // ---- init ----
-    buildTriMap();
-    cam.x = mapWidth * 0.5;
-    cam.y = mapHeight * 0.5;
-    cam.scale = 0.6; // Start zoomed out a bit
-
     window.addEventListener("resize", resize);
     resize();
+    buildTriMap();
+    cam.x = mapWidth * 0.5; cam.y = mapHeight * 0.5;
     requestAnimationFrame(step);
   </script>
 </body>
