@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Rhombic Triacontahedron Progression</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #1a1a1a; 
+            color: white;
+            font-family: sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 15px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+            line-height: 1.6;
+            font-size: 16px;
+        }
+        .highlight { color: #FFE66D; font-weight: bold; }
+        .labels {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            pointer-events: none;
+            font-size: 18px;
+            font-weight: bold;
+            color: #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <b>Golden Rhombic Pyramids Progression</b><br/>
+        Building pieces of a <span class="highlight">Rhombic Triacontahedron</span>.<br/>
+        (Click and drag to rotate around the models)
+    </div>
+
+    <div class="labels">
+        <div>9/30 (The "Flower")</div>
+        <div>3/30 (1/10th Segment)</div>
+        <div>1/30 (Single Segment)</div>
+    </div>
+
+    <!-- Import maps polyfill -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    
+    <!-- Three.js Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // 1. Scene Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 12, 45);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(10, 25, 20);
+        scene.add(dirLight);
+        
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        fillLight.position.set(-15, -10, -15);
+        scene.add(fillLight);
+
+        // 3. Mathematical Vertices of a Rhombic Triacontahedron
+        const phi = (1 + Math.sqrt(5)) / 2; // Golden Ratio (~1.618)
+        const invPhi = 1 / phi;             // Inverse Golden Ratio (~0.618)
+
+        // 3-valence vertices (where 3 blunt angles meet)
+        const d1 = new THREE.Vector3(1, 1, 1);
+        const d2 = new THREE.Vector3(invPhi, 0, phi);
+        const d3 = new THREE.Vector3(0, phi, invPhi);
+        const d4 = new THREE.Vector3(phi, invPhi, 0);
+        const d5 = new THREE.Vector3(-invPhi, 0, phi);
+        const d6 = new THREE.Vector3(1, -1, 1);
+        const d7 = new THREE.Vector3(-1, 1, 1);
+        const d8 = new THREE.Vector3(0, phi, -invPhi);
+        const d9 = new THREE.Vector3(1, 1, -1);
+        const d10 = new THREE.Vector3(phi, -invPhi, 0);
+
+        // 5-valence vertices (where 5 sharp angles meet)
+        const i1 = new THREE.Vector3(0, 1, phi);
+        const i2 = new THREE.Vector3(1, phi, 0);
+        const i3 = new THREE.Vector3(phi, 0, 1);
+        const i4 = new THREE.Vector3(0, -1, phi);
+        const i5 = new THREE.Vector3(-1, phi, 0);
+        const i6 = new THREE.Vector3(phi, 0, -1);
+
+        // FIX: Ensured each face array element is on its own line so comments don't hide them!
+        const faces =[
+            // Center Core (3 Pieces meeting at d1)
+            [d1, i1, d2, i3], // Face 0
+            [d1, i2, d3, i1], // Face 1
+            [d1, i3, d4, i2], // Face 2
+            
+            // Petals around d2
+            [d2, i1, d5, i4], // Face 3
+            [d2, i4, d6, i3], // Face 4
+            
+            // Petals around d3
+            [d3, i2, d8, i5], // Face 5
+            [d3, i5, d7, i1], // Face 6
+            
+            // Petals around d4
+            [d4, i3, d10, i6], // Face 7
+            [d4, i6, d9, i2]  // Face 8
+        ];
+
+        // 4. Pyramid Generator Function
+        function createPyramid(vA, vB, vC, vD, scale, colorHex) {
+            let B = vB;
+            let D = vD;
+            
+            // Ensure the normals face outwards (Counter-Clockwise winding)
+            const vAB = new THREE.Vector3().subVectors(B, vA);
+            const vAD = new THREE.Vector3().subVectors(D, vA);
+            const cross = new THREE.Vector3().crossVectors(vAB, vAD);
+            if (cross.dot(vA) < 0) {
+                B = vD;
+                D = vB; // Swap to fix winding
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            const S = scale;
+            
+            const vertices = new Float32Array([
+                0, 0, 0,                             // v0: Apex (Center of Sphere)
+                vA.x * S, vA.y * S, vA.z * S,        // v1
+                B.x * S,  B.y * S,  B.z * S,         // v2
+                vC.x * S, vC.y * S, vC.z * S,        // v3
+                D.x * S,  D.y * S,  D.z * S          // v4
+            ]);
+
+            const indices =[
+                1, 2, 3,  1, 3, 4, // Diamond Base
+                0, 2, 1,  0, 3, 2, // Sides
+                0, 4, 3,  0, 1, 4  
+            ];
+
+            geometry.setIndex(indices);
+            geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshStandardMaterial({
+                color: colorHex,
+                flatShading: true,
+                roughness: 0.6,
+                metalness: 0.1,
+                polygonOffset: true,
+                polygonOffsetFactor: 1, 
+                polygonOffsetUnits: 1
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            const edges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(geometry),
+                new THREE.LineBasicMaterial({ color: 0x222222, linewidth: 2 })
+            );
+            mesh.add(edges);
+
+            return mesh;
+        }
+
+        // 5. Construct the 3 Visualizations
+        const S = 3.5; // Visual Scale factor
+        const palette =[
+            0xFF6B6B, 0x4ECDC4, 0xFFE66D, // Core 3 Colors
+            0xFCA311, 0xFF9F1C,           // Petals 1
+            0xA2D2FF, 0x9D4EDD,           // Petals 2
+            0x8AC926, 0xFF99C8            // Petals 3
+        ];
+
+        // Symmetrical axis connecting center to the primary blunt tip (d1)
+        const symmetryAxis = new THREE.Vector3(1, 1, 1).normalize();
+        const upVector = new THREE.Vector3(0, 1, 0);
+        
+        // Helper to assemble the segments, stand them upright, and center them vertically
+        function buildSegmentGroup(numFaces, xOffset) {
+            const outerGroup = new THREE.Group();
+            outerGroup.position.x = xOffset;
+            
+            const innerGroup = new THREE.Group();
+            for(let i = 0; i < numFaces; i++) {
+                innerGroup.add(createPyramid(faces[i][0], faces[i][1], faces[i][2], faces[i][3], S, palette[i]));
+            }
+            
+            // Orient the assembly so the primary (1,1,1) tip points straight up to the sky
+            innerGroup.quaternion.setFromUnitVectors(symmetryAxis, upVector);
+            
+            // Center the mass vertically (Height is S * sqrt(3))
+            innerGroup.position.y = -(S * 1.732) / 2;
+            
+            outerGroup.add(innerGroup);
+            scene.add(outerGroup);
+            return outerGroup;
+        }
+
+        // A. 9-Piece "Flower" (Left)
+        const flowerGroup = buildSegmentGroup(9, -15);
+        
+        // B. 3-Piece 1/10th Segment (Center)
+        const centerGroup = buildSegmentGroup(3, 0);
+        
+        // C. 1-Piece Segment (Right)
+        const singleGroup = buildSegmentGroup(1, 15);
+
+        // 6. Controls and Animation
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        // Orbit around the center point
+        controls.autoRotate = true; 
+        controls.autoRotateSpeed = 0.5; 
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Give the individual models a tiny bit of independent spin for extra effect
+            flowerGroup.rotation.y -= 0.005;
+            centerGroup.rotation.y -= 0.005;
+            singleGroup.rotation.y -= 0.005;
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
