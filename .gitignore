@@ -1,0 +1,15 @@
+.webserver.*
+.prototype_*_parse_check.mjs
+
+node_modules/
+dist/
+coverage/
+.tmp/
+.venv/
+
+*.log
+*.pid
+*.tmp
+
+.DS_Store
+Thumbs.db
