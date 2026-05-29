@@ -539,6 +539,39 @@
       return group;
     }
 
+    function createGravitonBallMesh() {
+      const group = new THREE.Group();
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(0.48, 24, 16),
+        new THREE.MeshStandardMaterial({ color: 0x172235, emissive: 0x2550ff, roughness: 0.28, metalness: 0.35 })
+      );
+      core.castShadow = true;
+      core.receiveShadow = true;
+      group.add(core);
+
+      const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.72, 20, 14),
+        new THREE.MeshBasicMaterial({ color: 0x66d9ff, transparent: true, opacity: 0.24, depthWrite: false })
+      );
+      group.add(glow);
+
+      for (let i = 0; i < 3; i++) {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(0.68 + i * 0.08, 0.018, 8, 42),
+          new THREE.MeshBasicMaterial({ color: i === 1 ? 0xffffff : 0x61c7ff, transparent: true, opacity: 0.72 })
+        );
+        ring.rotation.set(i * 0.65, i * 1.17, i * 0.38);
+        group.add(ring);
+      }
+
+      const collider = new THREE.Mesh(
+        new THREE.SphereGeometry(1.05, 12, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      group.add(collider);
+      return group;
+    }
+
     function createSawbladeMesh() {
       const group = new THREE.Group();
       const blade = new THREE.Mesh(
@@ -724,6 +757,33 @@
           return dir.clone().normalize().multiplyScalar(11 + power * 13).add(new THREE.Vector3(0, 4.8 + power * 4.2, 0));
         },
       },
+      gravitonBall: {
+        label: "Graviton ball",
+        groundOffset: 0.52,
+        throwGravity: 0,
+        createMesh: createGravitonBallMesh,
+        holdPose(item, t) {
+          item.mesh.position.set(0.06, 0.62, -1.18);
+          item.mesh.rotation.set(t * 0.7, t * 1.15, -0.16);
+        },
+        aimPose(item) {
+          item.mesh.position.set(0.05, 0.76, -1.34);
+          item.mesh.rotation.set(-0.12, 0.28, clock.elapsedTime * 0.7);
+        },
+        meleePose(item, progress) {
+          const p = smoothstep(progress);
+          item.mesh.position.set(0.08, 0.48 - p * 0.24, -1.02 - p * 1.12);
+          item.mesh.rotation.set(0.4 + p * 1.4, 0.35 + p * 0.9, -0.16);
+        },
+        throwVelocity(dir) {
+          const power = arguments.length > 1 ? arguments[1] : 1;
+          const flat = dir.clone();
+          flat.y = 0;
+          if (flat.lengthSq() < 0.0001) flat.set(Math.sin(player.cameraYaw), 0, -Math.cos(player.cameraYaw));
+          flat.normalize();
+          return flat.multiplyScalar(8.5 + power * 13.5);
+        },
+      },
       sawblade: {
         label: "Curving sawblade",
         groundOffset: 0.18,
@@ -905,6 +965,8 @@
       ["beacon", 18, 10],
       ["airstrikeBeacon", -19, 10],
       ["airstrikeBeacon", 10, -16],
+      ["gravitonBall", -6, 15],
+      ["gravitonBall", 20, 5],
     ].forEach(([type, x, z]) => addItem(type, x, z));
 
     function createRockPillar(x, z, radius = 1.05, height = 5.6) {
@@ -1325,6 +1387,8 @@
       }
       if (item.type === "sawblade") {
         item.spin.set(0, 0, 24);
+      } else if (item.type === "gravitonBall") {
+        item.spin.set(5.8, 7.4, 4.6);
       } else {
         item.spin.set(
           item.type === "rock" ? 1.7 : 5.4,
@@ -1340,11 +1404,17 @@
       item.spinAngle = 0;
       item.sawFlatSpeed = item.type === "sawblade" ? Math.hypot(item.velocity.x, item.velocity.z) : 0;
       item.sawHeightOffset = item.type === "sawblade" ? clamp(dir.y * 6.5, -0.1, 4.4) : 0;
+      if (item.type === "gravitonBall") {
+        item.gravitonAge = 0;
+        item.gravitonCaptured = [];
+        item.gravitonRoll = 0;
+        item.velocity.y = 0;
+      }
       projectiles.push(item);
       player.heldItem = null;
       player.throwCharge = 0;
       input.throwCharging = false;
-      spawnImpact(worldPos, item.type === "rock" ? 0x8a8580 : 0xb8c3c7, 8, 1.8);
+      spawnImpact(worldPos, item.type === "rock" ? 0x8a8580 : item.type === "gravitonBall" ? 0x7ddcff : 0xb8c3c7, item.type === "gravitonBall" ? 14 : 8, item.type === "gravitonBall" ? 2.6 : 1.8);
     }
 
     function spawnImpact(pos, color, count, spread) {
@@ -1968,6 +2038,19 @@
       return hits;
     }
 
+    function knockEnemiesOnly(center, radius, impulse, stunSeconds = 0.7) {
+      let hits = 0;
+      for (const enemy of enemies) {
+        if (enemy.state !== "alive") continue;
+        if (enemy.mesh.position.distanceTo(center) > radius + enemy.radius) continue;
+        const directedImpulse = projectedImpulseFromHit(enemy, center, impulse).multiplyScalar(1.0 + Math.random() * 0.25);
+        knockEnemy(enemy, directedImpulse, enemy.type === "bluePillar" ? 1.2 : stunSeconds);
+        hits++;
+      }
+      if (hits > 0) spawnImpact(center, 0x7ddcff, Math.min(22, 8 + hits * 3), 4.4);
+      return hits;
+    }
+
     function hitSingleEnemy(center, radius, impulse, damage = 2) {
       let best = null;
       let bestDist = Infinity;
@@ -2162,11 +2245,11 @@
       if (item.type === "beam") {
         setBeamBladePose(item, 1.42, -0.06, -0.28, 1, 0.08, -0.08);
       } else if (item.type === "sawblade") {
-        item.mesh.position.set(1.34, -0.08, -0.34);
+        item.mesh.position.set(0, -0.2, -1.52);
         item.mesh.rotation.set(Math.PI / 2, 0, t * 18);
       } else {
-        item.mesh.position.set(1.16, 0.08, -0.36);
-        item.mesh.rotation.set(-0.42, t * 1.4, -0.26);
+        item.mesh.position.set(0, -0.05, -1.56);
+        item.mesh.rotation.set(-0.62, t * 1.4, 0);
       }
     }
 
@@ -2286,8 +2369,13 @@
       const item = player.heldItem;
       if (item) {
         if (player.spinAttack) {
-          setArmPose(mech.rightArm, 0.46, -0.92, 0.26, 0.08);
-          setArmPose(mech.leftArm, 0.18, 0.58, -0.48, 0.12);
+          if (item.type === "rock" || item.type === "sawblade") {
+            setArmPose(mech.rightArm, 0.88, -0.18, 0.08, 0.86);
+            setArmPose(mech.leftArm, 0.88, 0.18, -0.08, 0.86);
+          } else {
+            setArmPose(mech.rightArm, 0.46, -0.92, 0.26, 0.08);
+            setArmPose(mech.leftArm, 0.18, 0.58, -0.48, 0.12);
+          }
         } else if (input.aimHeld && !player.action) {
           if (item.type === "rock") {
             setArmPose(mech.leftArm, 0.88, 0.34, -0.18, 0.72);
@@ -2326,7 +2414,7 @@
 
       updateHeldItemPose(t);
       if (player.spinAttack && item) {
-        const spinHit = new THREE.Vector3(item.type === "beam" ? 2.7 : 1.58, 0.02, -0.34);
+        const spinHit = new THREE.Vector3(item.type === "beam" ? 2.7 : 0, 0.02, item.type === "beam" ? -0.34 : -1.62);
         mech.upperPitch.localToWorld(spinHit);
         hitSpinEnemies(spinHit, item);
       }
@@ -2351,6 +2439,8 @@
             } else if (heldItem.type === "heldEnemy") {
               hitSingleEnemy(impact, 2.25, forceDir.multiplyScalar(8), 2);
               squishHeldEnemyItem(heldItem, impact);
+            } else if (heldItem.type === "gravitonBall") {
+              knockEnemiesOnly(impact, 4.8, forceDir.multiplyScalar(24), 0.9);
             } else {
               damageImpaledEnemiesOnMelee(heldItem);
               hitEnemies(impact, radius, forceDir.multiplyScalar(heldItem.type === "rock" ? 6 : heldItem.type === "sawblade" ? 7 : 8), null, { meleeDamage: 1, deathLiftScale: 0.25, stunSeconds: 0.4, dismember: heldItem.type === "sawblade" });
@@ -2390,10 +2480,164 @@
       item.mesh.rotation.set(Math.PI / 2, 0, item.spinAngle);
     }
 
+    function captureEnemyInGraviton(enemy, item) {
+      if (!item.gravitonCaptured) item.gravitonCaptured = [];
+      if (enemy.gravitonItem === item || enemy.state !== "alive") return;
+
+      const index = item.gravitonCaptured.length;
+      const angle = index * 2.399 + Math.random() * 0.45;
+      const ring = 0.9 + Math.sqrt(index + 1) * 0.22;
+      enemy.gravitonItem = item;
+      enemy.gravitonOffset = new THREE.Vector3(
+        Math.cos(angle) * ring,
+        0.36 + (index % 5) * 0.18,
+        Math.sin(angle) * ring
+      );
+      enemy.gravitonPhase = Math.random() * TAU;
+      enemy.velocity.set(0, 0, 0);
+      enemy.stunT = 0;
+      item.gravitonCaptured.push(enemy);
+      spawnImpact(enemy.mesh.position, enemy.type === "bluePillar" ? 0x52b7ff : 0x9be36f, 6, 1.2);
+    }
+
+    function updateGravitonEnergyBeams(item) {
+      let lines = item.mesh.userData.energyLines;
+      if (!lines) {
+        lines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({ color: 0x9feaff, transparent: true, opacity: 0.86 })
+        );
+        item.mesh.userData.energyLines = lines;
+        item.mesh.add(lines);
+      }
+
+      const captured = item.gravitonCaptured || [];
+      const points = [];
+      const beamCount = 18;
+      const t = clock.elapsedTime;
+      for (let i = 0; i < beamCount; i++) {
+        const a = i * TAU / beamCount + t * 0.9;
+        const y = Math.sin(i * 1.7 + t * 2.1) * 0.42;
+        const dir = new THREE.Vector3(Math.cos(a), y, Math.sin(a)).normalize();
+        let covered = false;
+        for (const enemy of captured) {
+          if (!enemy.gravitonOffset) continue;
+          tmpVec.copy(enemy.gravitonOffset).normalize();
+          if (tmpVec.dot(dir) > 0.64) {
+            covered = true;
+            break;
+          }
+        }
+        if (covered) continue;
+        points.push(dir.clone().multiplyScalar(0.58));
+        points.push(dir.clone().multiplyScalar(1.35 + Math.sin(t * 8 + i) * 0.25));
+      }
+
+      lines.geometry.dispose();
+      lines.geometry = new THREE.BufferGeometry().setFromPoints(points);
+      lines.visible = points.length > 0;
+      lines.material.opacity = clamp(0.18 + (beamCount - captured.length) / beamCount, 0.25, 0.86);
+    }
+
+    function updateCapturedGravitonEnemies(item, dt) {
+      if (!item.gravitonCaptured) return;
+      const ballPos = item.mesh.position;
+      item.gravitonCaptured = item.gravitonCaptured.filter((enemy) => enemy.state === "alive" && enemy.gravitonItem === item);
+      for (const enemy of item.gravitonCaptured) {
+        enemy.gravitonControl = true;
+        enemy.velocity.copy(item.velocity);
+        const offset = enemy.gravitonOffset || new THREE.Vector3(1, 0.5, 0);
+        tmpVec.copy(offset)
+          .applyAxisAngle(new THREE.Vector3(0, 1, 0), item.gravitonRoll + enemy.gravitonPhase)
+          .applyAxisAngle(new THREE.Vector3(1, 0, 0), Math.sin(item.gravitonRoll * 0.7 + enemy.gravitonPhase) * 0.7);
+        const target = ballPos.clone().add(tmpVec);
+        const groundY = heightAt(target.x, target.z) + enemy.groundOffset;
+        target.y = Math.max(target.y, groundY + 0.12);
+        enemy.mesh.position.lerp(target, 1 - Math.pow(0.0005, dt));
+        enemy.mesh.rotation.x += dt * (7.5 + Math.abs(item.velocity.z) * 0.3);
+        enemy.mesh.rotation.y += dt * (5.8 + enemy.gravitonPhase);
+        enemy.mesh.rotation.z += dt * (6.4 + Math.abs(item.velocity.x) * 0.3);
+        animateEnemyLimbs(enemy, clock.elapsedTime, 2.6);
+      }
+    }
+
+    function burstGravitonBall(item) {
+      const pos = item.mesh.position.clone();
+      const affected = new Set(item.gravitonCaptured || []);
+      for (const enemy of enemies) {
+        if (enemy.state !== "alive") continue;
+        if (enemy.mesh.position.distanceTo(pos) <= 6.4 + enemy.radius) affected.add(enemy);
+      }
+
+      for (const enemy of affected) {
+        if (enemy.state !== "alive") continue;
+        enemy.gravitonItem = null;
+        enemy.gravitonOffset = null;
+        enemy.gravitonControl = false;
+        tmpVec.subVectors(enemy.mesh.position, pos);
+        tmpVec.y = 0;
+        if (tmpVec.lengthSq() < 0.0001) tmpVec.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+        const dist = Math.max(tmpVec.length(), 0.35);
+        tmpVec.normalize().multiplyScalar(18 + Math.max(0, 6.4 - dist) * 2.4);
+        tmpVec.y = 5.2 + Math.random() * 4.2;
+        knockEnemy(enemy, tmpVec, enemy.type === "bluePillar" ? 1.4 : 1.0);
+      }
+
+      spawnShockwave(pos, 8.2);
+      spawnImpact(pos, 0x9feaff, 110, 10.5);
+      spawnGoo(pos, 0x52b7ff, 34);
+      consumeItem(item);
+    }
+
+    function updateGravitonProjectile(item, dt) {
+      item.gravitonAge = (item.gravitonAge || 0) + dt;
+      item.gravitonRoll = (item.gravitonRoll || 0) + item.velocity.length() * dt * 0.75 + dt * 2.2;
+      item.velocity.y = 0;
+      item.velocity.x *= Math.pow(0.88, dt);
+      item.velocity.z *= Math.pow(0.88, dt);
+      item.mesh.position.addScaledVector(item.velocity, dt);
+      item.mesh.position.x = clamp(item.mesh.position.x, -68, 68);
+      item.mesh.position.z = clamp(item.mesh.position.z, -68, 68);
+      item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
+      item.mesh.rotation.x += item.spin.x * dt + item.velocity.z * dt * 0.4;
+      item.mesh.rotation.y += item.spin.y * dt;
+      item.mesh.rotation.z += item.spin.z * dt - item.velocity.x * dt * 0.4;
+
+      const pullRadius = 8.0;
+      const captureRadius = 1.55 + Math.min(2.2, Math.sqrt((item.gravitonCaptured || []).length) * 0.22);
+      for (const enemy of enemies) {
+        if (enemy.state !== "alive" || enemy.gravitonItem === item) continue;
+        const dist = enemy.mesh.position.distanceTo(item.mesh.position);
+        if (dist > pullRadius + enemy.radius) continue;
+        tmpVec.subVectors(item.mesh.position, enemy.mesh.position);
+        tmpVec.y *= 0.35;
+        const pull = (1 - clamp(dist / pullRadius, 0, 1)) * 24;
+        if (tmpVec.lengthSq() > 0.0001) {
+          tmpVec.normalize().multiplyScalar(pull * dt);
+          enemy.mesh.position.add(tmpVec);
+        }
+        enemy.gravitonControl = true;
+        enemy.stunT = 0;
+        enemy.velocity.lerp(item.velocity, 0.25);
+        enemy.mesh.position.y = Math.max(enemy.mesh.position.y, heightAt(enemy.mesh.position.x, enemy.mesh.position.z) + enemy.groundOffset);
+        if (dist <= captureRadius + enemy.radius) captureEnemyInGraviton(enemy, item);
+      }
+
+      updateCapturedGravitonEnemies(item, dt);
+      updateGravitonEnergyBeams(item);
+      if (item.gravitonAge > 3.65) {
+        burstGravitonBall(item);
+      }
+    }
+
     function updateProjectiles(dt) {
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const item = projectiles[i];
         item.throwAge = (item.throwAge || 0) + dt;
+        if (item.type === "gravitonBall") {
+          updateGravitonProjectile(item, dt);
+          continue;
+        }
         if (item.type === "sawblade") {
           if (!item.sawFlatSpeed) item.sawFlatSpeed = Math.hypot(item.velocity.x, item.velocity.z);
           applySawbladeCurve(item, dt, item.mesh.position);
@@ -2537,6 +2781,10 @@
       for (let i = enemies.length - 1; i >= 0; i--) {
         const enemy = enemies[i];
         if (enemy.state === "alive") {
+          if (enemy.gravitonControl) {
+            enemy.gravitonControl = false;
+            continue;
+          }
           if (enemy.orbitalControl) {
             enemy.orbitalControl = false;
             animateEnemyLimbs(enemy, clock.elapsedTime, 2.4);
@@ -2562,6 +2810,10 @@
             enemy.velocity.z = tmpVec.z * enemy.speed;
             enemy.mesh.rotation.y = Math.atan2(tmpVec.x, tmpVec.z);
           }
+          enemy.mesh.rotation.x *= Math.pow(0.001, dt);
+          enemy.mesh.rotation.z *= Math.pow(0.001, dt);
+          if (Math.abs(enemy.mesh.rotation.x) < 0.002) enemy.mesh.rotation.x = 0;
+          if (Math.abs(enemy.mesh.rotation.z) < 0.002) enemy.mesh.rotation.z = 0;
           enemy.mesh.position.x += enemy.velocity.x * dt;
           enemy.mesh.position.z += enemy.velocity.z * dt;
           enemy.mesh.position.y = heightAt(enemy.mesh.position.x, enemy.mesh.position.z) + enemy.groundOffset;
@@ -2642,6 +2894,7 @@
       const sim = start.clone();
       const vel = velocity.clone();
       const throwDir = getThrowDirection();
+      const gravitonPreview = item.type === "gravitonBall";
       const previewItem = item.type === "sawblade" ? {
         type: "sawblade",
         def: item.def,
@@ -2654,13 +2907,19 @@
 
       for (let i = 0; i < 28; i++) {
         points.push(sim.clone());
-        if (previewItem) {
+        if (gravitonPreview) {
+          vel.y = 0;
+          vel.x *= Math.pow(0.88, step);
+          vel.z *= Math.pow(0.88, step);
+          sim.y = heightAt(sim.x, sim.z) + item.def.groundOffset;
+        } else if (previewItem) {
           previewItem.throwAge += step;
           applySawbladeCurve(previewItem, step, sim);
         } else {
           vel.y -= item.def.throwGravity * step;
         }
         sim.addScaledVector(vel, step);
+        if (gravitonPreview) sim.y = heightAt(sim.x, sim.z) + item.def.groundOffset;
         if (sim.y < heightAt(sim.x, sim.z) + item.def.groundOffset) break;
       }
 
