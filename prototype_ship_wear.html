@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+  />
+  <title>Ship Wear and Tear</title>
+  <style>
+    :root {
+      --bg: #090d12;
+      --panel: rgba(13, 18, 25, 0.86);
+      --panel-soft: rgba(255, 255, 255, 0.08);
+      --line: rgba(255, 255, 255, 0.18);
+      --text: rgba(243, 247, 250, 0.94);
+      --muted: rgba(210, 221, 228, 0.68);
+      --green: #48d07f;
+      --amber: #ffcc4a;
+      --orange: #ff7b45;
+      --red: #ef3e56;
+      --blue: #5bb7f0;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 22% 18%, rgba(89, 166, 190, 0.18), transparent 26%),
+        radial-gradient(circle at 78% 72%, rgba(209, 83, 77, 0.12), transparent 24%),
+        linear-gradient(145deg, #07090e 0%, #10151b 45%, #05080d 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+    }
+
+    .hud {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      width: min(920px, calc(100vw - 28px));
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .health-shell,
+    .panel,
+    .missile-bar {
+      pointer-events: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: 0 16px 44px rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .health-shell {
+      min-width: 0;
+      border-radius: 8px;
+      padding: 10px 12px 12px;
+    }
+
+    .health-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .health-track {
+      position: relative;
+      height: 20px;
+      overflow: hidden;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.08);
+      outline: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .health-direct,
+    .health-pending,
+    .health-recoverable,
+    .health-lost {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      transition: width 160ms ease;
+    }
+
+    .health-direct {
+      background: linear-gradient(90deg, #31c570, #7ee07e);
+      z-index: 4;
+    }
+
+    .health-recoverable {
+      background: repeating-linear-gradient(
+        135deg,
+        #18130a 0,
+        #18130a 8px,
+        #ffd453 8px,
+        #ffd453 15px
+      );
+      z-index: 3;
+    }
+
+    .health-pending {
+      background: repeating-linear-gradient(
+        135deg,
+        rgba(91, 183, 240, 0.34) 0,
+        rgba(91, 183, 240, 0.34) 7px,
+        rgba(216, 231, 237, 0.28) 7px,
+        rgba(216, 231, 237, 0.28) 14px
+      );
+      z-index: 2;
+    }
+
+    .health-lost {
+      background: rgba(0, 0, 0, 0.58);
+      z-index: 1;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 8px;
+      border-radius: 2px;
+      background: var(--green);
+    }
+
+    .swatch.recoverable {
+      background: linear-gradient(90deg, #18130a 0 50%, #ffd453 50%);
+    }
+
+    .swatch.pending {
+      background: linear-gradient(90deg, rgba(91, 183, 240, 0.55) 0 50%, rgba(216, 231, 237, 0.42) 50%);
+    }
+
+    .swatch.lost {
+      background: rgba(0, 0, 0, 0.7);
+    }
+
+    .panel {
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      min-width: 170px;
+    }
+
+    .panel strong {
+      display: block;
+      color: var(--text);
+      font-size: 18px;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .side-panel {
+      position: absolute;
+      right: 14px;
+      top: 112px;
+      width: 246px;
+      display: grid;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .control {
+      display: grid;
+      gap: 7px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .control:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .checkbox input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--blue);
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.09);
+      color: var(--text);
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:hover,
+    button.active {
+      border-color: rgba(91, 183, 240, 0.8);
+      background: rgba(91, 183, 240, 0.2);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .missile-bar {
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(112px, 1fr));
+      gap: 8px;
+      width: min(480px, calc(100vw - 28px));
+      padding: 9px;
+      border-radius: 8px;
+      pointer-events: auto;
+    }
+
+    .missile-button {
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      padding: 8px;
+    }
+
+    .missile-button small {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: 88px;
+      transform: translateX(-50%);
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+      text-align: center;
+      width: min(560px, calc(100vw - 32px));
+    }
+
+    @media (max-width: 760px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .panel.stats {
+        display: none;
+      }
+
+      .side-panel {
+        left: 12px;
+        right: 12px;
+        top: auto;
+        bottom: 88px;
+        width: auto;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .panel.tuning {
+        display: none;
+      }
+
+      .missile-bar {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div class="hud">
+    <div class="topbar">
+      <div class="health-shell">
+        <div class="health-label">
+          <span>Hull Integrity</span>
+          <span id="healthText">100 / 100</span>
+        </div>
+        <div class="health-track" aria-hidden="true">
+          <div class="health-lost" id="lostBar"></div>
+          <div class="health-pending" id="pendingBar"></div>
+          <div class="health-recoverable" id="recoverableBar"></div>
+          <div class="health-direct" id="directBar"></div>
+        </div>
+        <div class="legend">
+          <span><i class="swatch"></i>Stable</span>
+          <span><i class="swatch recoverable"></i>Recoverable breach loss</span>
+          <span><i class="swatch pending"></i>Pending breach damage</span>
+          <span><i class="swatch lost"></i>Permanent loss</span>
+        </div>
+      </div>
+      <div class="panel stats">
+        <strong id="scoreText">0</strong>
+        impacts resolved
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="panel tuning">
+        <div class="control">
+          <label><span>Breach event priority</span><span id="breachModeValue">Balanced</span></label>
+          <div class="segmented" id="breachModeBar">
+            <button data-breach-mode="spread">Spread</button>
+            <button class="active" data-breach-mode="balanced">Balanced</button>
+            <button data-breach-mode="escalate">Escalate</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="control">
+          <label class="checkbox" for="enhancedRepair">
+            <input id="enhancedRepair" type="checkbox" checked />
+            Enhanced Repair
+          </label>
+        </div>
+        <div class="control">
+          <div class="buttons">
+            <button id="repairWorst">Repair Worst</button>
+            <button id="repairAll">Repair All</button>
+            <button id="resetSim">Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="missile-bar" id="missileBar">
+      <button class="missile-button active" data-missile="0">Pinpoint<small>Low damage</small></button>
+      <button class="missile-button" data-missile="1">Breaker<small>Medium damage</small></button>
+      <button class="missile-button" data-missile="2">Siege<small>High damage</small></button>
+    </div>
+    <div class="toast">Click around the ship to fire from that direction. Click a breach or interior defect to repair it.</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("stage");
+    const ctx = canvas.getContext("2d");
+    const directBar = document.getElementById("directBar");
+    const pendingBar = document.getElementById("pendingBar");
+    const recoverableBar = document.getElementById("recoverableBar");
+    const lostBar = document.getElementById("lostBar");
+    const healthText = document.getElementById("healthText");
+    const scoreText = document.getElementById("scoreText");
+    const breachModeValue = document.getElementById("breachModeValue");
+    const enhancedRepair = document.getElementById("enhancedRepair");
+    const repairWorst = document.getElementById("repairWorst");
+    const repairAll = document.getElementById("repairAll");
+    const resetSim = document.getElementById("resetSim");
+    const missileButtons = Array.from(document.querySelectorAll(".missile-button"));
+    const breachModeButtons = Array.from(document.querySelectorAll("[data-breach-mode]"));
+
+    const hullConfig = {
+      breachThreshold: 12,
+      minorRepairValue: 10,
+      majorRepairValue: 20,
+      minorBreachesPriorToMajor: 2
+    };
+
+    const missiles = [
+      { name: "Pinpoint", damage: 8, speed: 440, color: "#73d8ff", direct: 0.44, radius: 4 },
+      { name: "Breaker", damage: 16, speed: 380, color: "#ffcc4a", direct: 0.35, radius: 5 },
+      { name: "Siege", damage: 28, speed: 320, color: "#ff674f", direct: 0.28, radius: 7 }
+    ];
+
+    const directionNames = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
+    const breachSlots = [
+      { x: 0.00, y: -0.92, dir: 6 }, { x: 0.28, y: -0.78, dir: 7 },
+      { x: 0.55, y: -0.48, dir: 7 }, { x: 0.72, y: -0.12, dir: 0 },
+      { x: 0.66, y: 0.30, dir: 0 }, { x: 0.42, y: 0.64, dir: 1 },
+      { x: 0.13, y: 0.84, dir: 2 }, { x: -0.13, y: 0.84, dir: 2 },
+      { x: -0.42, y: 0.64, dir: 3 }, { x: -0.66, y: 0.30, dir: 4 },
+      { x: -0.72, y: -0.12, dir: 4 }, { x: -0.55, y: -0.48, dir: 5 },
+      { x: -0.28, y: -0.78, dir: 5 }, { x: 0.24, y: 0.86, dir: 1 },
+      { x: -0.24, y: 0.86, dir: 3 }, { x: 0.00, y: 0.74, dir: 2 }
+    ];
+
+    const defectSlots = [
+      { x: 0.00, y: -0.58, label: "Bridge" },
+      { x: 0.23, y: -0.45, label: "Sensor" },
+      { x: -0.23, y: -0.45, label: "Comms" },
+      { x: 0.00, y: -0.24, label: "Avionics" },
+      { x: 0.32, y: -0.12, label: "Battery" },
+      { x: -0.32, y: -0.12, label: "Coolant" },
+      { x: 0.16, y: 0.08, label: "Life" },
+      { x: -0.16, y: 0.08, label: "Cargo" },
+      { x: 0.40, y: 0.22, label: "Port Aux" },
+      { x: -0.40, y: 0.22, label: "Stbd Aux" },
+      { x: 0.18, y: 0.36, label: "Core A" },
+      { x: -0.18, y: 0.36, label: "Core B" },
+      { x: 0.08, y: 0.58, label: "Engine A" },
+      { x: -0.08, y: 0.58, label: "Engine B" }
+    ];
+
+    const state = {
+      dpr: 1,
+      width: 0,
+      height: 0,
+      center: { x: 0, y: 0 },
+      scale: 1,
+      ship: { health: 100, recoverable: 0, pendingRecoverable: 0, accumulatedDamage: 0, permanentLoss: 0 },
+      breachMode: "balanced",
+      selectedMissile: 0,
+      impacts: 0,
+      missiles: [],
+      sparks: [],
+      breaches: [],
+      defects: [],
+      mouse: { x: 0, y: 0 }
+    };
+
+    function resetState() {
+      state.ship.health = 100;
+      state.ship.recoverable = 0;
+      state.ship.pendingRecoverable = 0;
+      state.ship.accumulatedDamage = 0;
+      state.ship.permanentLoss = 0;
+      state.impacts = 0;
+      state.missiles = [];
+      state.sparks = [];
+      state.breaches = breachSlots.map((slot, index) => ({
+        id: index,
+        slot,
+        active: false,
+        stage: 0,
+        progress: 0,
+        visiblePulse: 0,
+        latent: 0
+      }));
+      state.defects = defectSlots.map((slot, index) => ({
+        id: index,
+        slot,
+        tier: 0,
+        progress: 0,
+        reinforced: false,
+        pulse: 0
+      }));
+      updateHud();
+    }
+
+    function resize() {
+      state.dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+      state.width = Math.floor(window.innerWidth);
+      state.height = Math.floor(window.innerHeight);
+      canvas.width = Math.floor(state.width * state.dpr);
+      canvas.height = Math.floor(state.height * state.dpr);
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      state.center.x = state.width / 2;
+      state.center.y = state.height / 2 + (state.height < 760 ? 8 : 18);
+      state.scale = Math.min(state.width * 0.38, state.height * 0.47, 350);
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function slotToWorld(slot) {
+      return {
+        x: state.center.x + slot.x * state.scale * 0.58,
+        y: state.center.y + slot.y * state.scale * 0.9
+      };
+    }
+
+    function directionIndexFromVector(x, y) {
+      const angle = Math.atan2(y, x);
+      return (Math.round(angle / (Math.PI / 4)) + 8) % 8;
+    }
+
+    function directionDistance(a, b) {
+      const diff = Math.abs(a - b);
+      return Math.min(diff, 8 - diff);
+    }
+
+    function pointInsideShip(x, y) {
+      const dx = (x - state.center.x) / state.scale;
+      const dy = (y - state.center.y) / state.scale;
+      if (Math.abs(dx) > 0.78 || Math.abs(dy) > 0.98) return false;
+      const nose = dy < -0.18 && Math.abs(dx) < 0.18 + (dy + 0.92) * 0.48;
+      const body = dy >= -0.56 && dy <= 0.56 && Math.abs(dx) < 0.45 - Math.max(0, dy - 0.1) * 0.18;
+      const wings = dy > -0.18 && dy < 0.38 && Math.abs(dx) < 0.72 - Math.abs(dy - 0.08) * 0.58;
+      const engine = dy >= 0.42 && dy < 0.9 && Math.abs(dx) < 0.28 - Math.max(0, dy - 0.42) * 0.1;
+      return nose || body || wings || engine;
+    }
+
+    function rayShipImpact(start, target) {
+      const steps = 180;
+      let previous = { ...start };
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const p = {
+          x: start.x + (target.x - start.x) * t,
+          y: start.y + (target.y - start.y) * t
+        };
+        if (pointInsideShip(p.x, p.y)) return p;
+        previous = p;
+      }
+      return previous;
+    }
+
+    function updateHud() {
+      const stable = clamp(state.ship.health, 0, 100);
+      const pending = clamp(state.ship.pendingRecoverable, 0, Math.max(0, 100 - stable));
+      const recoverable = clamp(state.ship.recoverable, 0, Math.max(0, 100 - stable - pending));
+      const lostStart = clamp(stable + recoverable + pending, 0, 100);
+      directBar.style.width = `${stable}%`;
+      pendingBar.style.left = `${stable}%`;
+      pendingBar.style.width = `${pending}%`;
+      recoverableBar.style.left = `${stable + pending}%`;
+      recoverableBar.style.width = `${recoverable}%`;
+      lostBar.style.left = `${lostStart}%`;
+      lostBar.style.width = `${100 - lostStart}%`;
+      healthText.textContent = `${Math.round(state.ship.health)} / 100`;
+      scoreText.textContent = state.impacts;
+      breachModeValue.textContent = state.breachMode[0].toUpperCase() + state.breachMode.slice(1);
+    }
+
+    function repairableFromBreaches() {
+      return state.breaches.reduce((total, breach) => {
+        if (!breach.active) return total;
+        return total + (breach.stage === 2 ? hullConfig.majorRepairValue : hullConfig.minorRepairValue);
+      }, 0);
+    }
+
+    function updateRecoverableFromBreaches() {
+      const missingAfterPending = Math.max(0, 100 - state.ship.health - state.ship.pendingRecoverable);
+      state.ship.recoverable = Math.min(repairableFromBreaches(), missingAfterPending);
+      state.ship.permanentLoss = Math.max(0, 100 - state.ship.health - state.ship.pendingRecoverable - state.ship.recoverable);
+    }
+
+    function healRecoverable(amount) {
+      const healed = Math.min(amount, state.ship.recoverable, 100 - state.ship.health);
+      state.ship.recoverable = clamp(state.ship.recoverable - healed, 0, 100);
+      state.ship.health = clamp(state.ship.health + healed, 0, 100);
+      updateRecoverableFromBreaches();
+      updateHud();
+      return healed;
+    }
+
+    function breachWeight(breach) {
+      return breach.stage === 2 ? 2 : 1;
+    }
+
+    function activeBreachWeight() {
+      return state.breaches.reduce((total, breach) => total + (breach.active ? breachWeight(breach) : 0), 0);
+    }
+
+    function breachScore(breach, dirIndex, impactPoint, includeProgress) {
+      const p = slotToWorld(breach.slot);
+      const dirScore = directionDistance(breach.slot.dir, dirIndex);
+      const impactScore = distance(p, impactPoint) / Math.max(1, state.scale);
+      const progressScore = includeProgress ? (1 - breach.progress) * 0.2 : 0;
+      const latentScore = breach.active ? 0 : -breach.latent * 0.45;
+      return dirScore * 3.2 + impactScore * 0.75 + progressScore + latentScore;
+    }
+
+    function sortedBreaches(dirIndex, impactPoint, predicate, dirLimit = 4, includeProgress = false) {
+      return state.breaches
+        .filter((breach) => predicate(breach) && directionDistance(breach.slot.dir, dirIndex) <= dirLimit)
+        .map((breach) => ({ breach, score: breachScore(breach, dirIndex, impactPoint, includeProgress) }))
+        .sort((a, b) => a.score - b.score)
+        .map((item) => item.breach);
+    }
+
+    function minorCount() {
+      return state.breaches.filter((breach) => breach.active && breach.stage === 1).length;
+    }
+
+    function closestBreach(dirIndex, impactPoint, predicate, dirLimit = 4) {
+      return sortedBreaches(dirIndex, impactPoint, predicate, dirLimit, true)[0] || null;
+    }
+
+    function setMinorBreach(breach) {
+      if (!breach) return false;
+      breach.active = true;
+      breach.stage = 1;
+      breach.progress = 0;
+      breach.visiblePulse = 1;
+      breach.latent = 0;
+      return true;
+    }
+
+    function setMajorBreach(breach) {
+      if (!breach || !breach.active || breach.stage !== 1) return false;
+      breach.stage = 2;
+      breach.progress = 1;
+      breach.visiblePulse = 1;
+      breach.latent = 0;
+      return true;
+    }
+
+    function createBreachEvent(dirIndex, impactPoint) {
+      const closestIntact = (dirLimit = 4) => closestBreach(dirIndex, impactPoint, (breach) => !breach.active, dirLimit);
+      const closestMinor = (dirLimit = 4) => closestBreach(dirIndex, impactPoint, (breach) => breach.active && breach.stage === 1, dirLimit);
+      const sameSideMinors = sortedBreaches(dirIndex, impactPoint, (breach) => breach.active && breach.stage === 1, 0, true);
+      const sameSideMajors = sortedBreaches(dirIndex, impactPoint, (breach) => breach.active && breach.stage === 2, 0);
+
+      if (minorCount() < hullConfig.minorBreachesPriorToMajor) {
+        if (setMinorBreach(closestIntact(4))) return;
+      }
+
+      if (state.breachMode === "spread") {
+        if (setMinorBreach(closestIntact(2) || closestIntact(4))) return;
+        if (setMajorBreach(closestMinor(4))) return;
+      } else if (state.breachMode === "escalate") {
+        if (setMajorBreach(closestMinor(2) || sameSideMinors[0] || closestMinor(4))) return;
+        if (setMinorBreach(closestIntact(4))) return;
+      } else {
+        if (!sameSideMinors.length || sameSideMajors.length) {
+          if (setMinorBreach(closestIntact(sameSideMajors.length ? 1 : 2))) return;
+        }
+        if (sameSideMinors.length) {
+          if (setMajorBreach(sameSideMinors[0])) return;
+        }
+        if (setMinorBreach(closestIntact(2) || closestIntact(4))) return;
+        if (setMajorBreach(closestMinor(4))) return;
+      }
+    }
+
+    function applyHullDamage(damage, dirIndex, impactPoint) {
+      if (damage <= 0 || state.ship.health <= 0) return;
+      const applied = Math.min(damage, state.ship.health);
+      state.ship.health = clamp(state.ship.health - applied, 0, 100);
+      state.ship.accumulatedDamage += applied;
+      state.ship.pendingRecoverable += applied;
+
+      while (state.ship.accumulatedDamage >= hullConfig.breachThreshold) {
+        state.ship.accumulatedDamage -= hullConfig.breachThreshold;
+        state.ship.pendingRecoverable = Math.max(0, state.ship.pendingRecoverable - hullConfig.breachThreshold);
+        createBreachEvent(dirIndex, impactPoint);
+      }
+
+      updateRecoverableFromBreaches();
+    }
+
+    function applyDefectDamage(impactPoint, damage) {
+      state.defects.forEach((defect) => {
+        const p = slotToWorld(defect.slot);
+        const normalizedDistance = clamp(distance(p, impactPoint) / (state.scale * 1.05), 0, 1);
+        const proximity = 1 - normalizedDistance;
+        const scaling = 0.16 + proximity * proximity * 0.9;
+        const reinforcementFactor = defect.reinforced ? 0.32 : 1;
+        const tierResistance = 16 + defect.tier * 12;
+        defect.progress += damage * scaling * reinforcementFactor / tierResistance;
+        defect.pulse = Math.max(defect.pulse, proximity);
+        while (defect.progress >= 1 && defect.tier < 3) {
+          defect.progress -= 1;
+          defect.tier += 1;
+          defect.pulse = 1;
+          if (defect.tier === 3) {
+            defect.progress = 1;
+            break;
+          }
+        }
+      });
+    }
+
+    function impactMissile(missile) {
+      const type = missiles[missile.type];
+      const dirIndex = directionIndexFromVector(-missile.vx, -missile.vy);
+      applyHullDamage(type.damage, dirIndex, missile.impact);
+      applyDefectDamage(missile.impact, type.damage);
+      state.impacts += 1;
+      for (let i = 0; i < 18; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 60 + Math.random() * 150;
+        state.sparks.push({
+          x: missile.impact.x,
+          y: missile.impact.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 0.35 + Math.random() * 0.35,
+          color: type.color
+        });
+      }
+      updateHud();
+    }
+
+    function fireMissile(x, y) {
+      const dx = x - state.center.x;
+      const dy = y - state.center.y;
+      const len = Math.max(1, Math.hypot(dx, dy));
+      const startDistance = Math.max(state.scale * 1.28, len);
+      const start = {
+        x: state.center.x + dx / len * startDistance,
+        y: state.center.y + dy / len * startDistance
+      };
+      const impact = rayShipImpact(start, state.center);
+      const type = missiles[state.selectedMissile];
+      const vx = (impact.x - start.x) / Math.max(1, distance(start, impact));
+      const vy = (impact.y - start.y) / Math.max(1, distance(start, impact));
+      state.missiles.push({
+        type: state.selectedMissile,
+        x: start.x,
+        y: start.y,
+        impact,
+        vx,
+        vy,
+        speed: type.speed
+      });
+    }
+
+    function repairBreach(breach, fullRepair = false) {
+      if (!breach || !breach.active) return false;
+      const repairAmount = breach.stage === 2 ? hullConfig.majorRepairValue : hullConfig.minorRepairValue;
+      breach.active = false;
+      breach.stage = 0;
+      breach.progress = 0;
+      breach.latent = 0;
+      healRecoverable(repairAmount);
+      updateRecoverableFromBreaches();
+      updateHud();
+      return true;
+    }
+
+    function repairDefect(defect) {
+      if (!defect || (defect.tier === 0 && defect.progress <= 0)) return false;
+      defect.tier = 0;
+      defect.progress = 0;
+      defect.reinforced = enhancedRepair.checked;
+      defect.pulse = 1;
+      return true;
+    }
+
+    function repairWorstTarget() {
+      const breach = state.breaches
+        .filter((item) => item.active)
+        .sort((a, b) => (b.stage * 2 + b.progress) - (a.stage * 2 + a.progress))[0];
+      const defect = state.defects
+        .slice()
+        .sort((a, b) => (b.tier + b.progress) - (a.tier + a.progress))[0];
+      if (breach && (!defect || breach.stage * 2 + breach.progress >= defect.tier + defect.progress)) {
+        repairBreach(breach);
+      } else {
+        repairDefect(defect);
+      }
+    }
+
+    function repairEverything() {
+      const hadBreaches = activeBreachWeight() > 0;
+      state.breaches.forEach((breach) => repairBreach(breach, true));
+      state.defects.forEach((defect) => repairDefect(defect));
+      if (hadBreaches && state.ship.recoverable > 0) healRecoverable(state.ship.recoverable);
+      updateHud();
+    }
+
+    function hitTestRepair(x, y) {
+      const breach = state.breaches.find((item) => item.active && distance(slotToWorld(item.slot), { x, y }) < 18);
+      if (breach) return repairBreach(breach);
+      const defect = state.defects.find((item) => {
+        const p = slotToWorld(item.slot);
+        return distance(p, { x, y }) < 16;
+      });
+      if (defect) return repairDefect(defect);
+      return false;
+    }
+
+    function drawShipShape() {
+      ctx.save();
+      ctx.translate(state.center.x, state.center.y);
+      ctx.scale(state.scale, state.scale);
+      const body = new Path2D();
+      body.moveTo(0, -0.98);
+      body.bezierCurveTo(0.22, -0.78, 0.36, -0.48, 0.39, -0.18);
+      body.lineTo(0.74, 0.08);
+      body.lineTo(0.45, 0.34);
+      body.bezierCurveTo(0.38, 0.52, 0.27, 0.75, 0.18, 0.92);
+      body.lineTo(0.07, 0.76);
+      body.lineTo(-0.07, 0.76);
+      body.lineTo(-0.18, 0.92);
+      body.bezierCurveTo(-0.27, 0.75, -0.38, 0.52, -0.45, 0.34);
+      body.lineTo(-0.74, 0.08);
+      body.lineTo(-0.39, -0.18);
+      body.bezierCurveTo(-0.36, -0.48, -0.22, -0.78, 0, -0.98);
+      body.closePath();
+
+      ctx.shadowColor = "rgba(87, 188, 216, 0.38)";
+      ctx.shadowBlur = 30;
+      ctx.fillStyle = "#202932";
+      ctx.fill(body);
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 0.012;
+      ctx.strokeStyle = "rgba(211, 232, 236, 0.34)";
+      ctx.stroke(body);
+      ctx.clip(body);
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.045)";
+      for (let y = -0.7; y < 0.8; y += 0.16) {
+        ctx.fillRect(-0.52, y, 1.04, 0.012);
+      }
+      ctx.fillStyle = "rgba(91, 183, 240, 0.13)";
+      ctx.fillRect(-0.03, -0.82, 0.06, 1.5);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.fillRect(-0.33, -0.08, 0.66, 0.025);
+      ctx.fillRect(-0.24, 0.32, 0.48, 0.025);
+      ctx.fillStyle = "rgba(72, 208, 127, 0.16)";
+      ctx.beginPath();
+      ctx.ellipse(0, -0.56, 0.13, 0.08, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawDirectionRing() {
+      const radius = state.scale * 0.78;
+      ctx.save();
+      ctx.translate(state.center.x, state.center.y);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = "700 11px Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      directionNames.forEach((name, index) => {
+        const angle = index * Math.PI / 4;
+        const x = Math.cos(angle) * (radius + 20);
+        const y = Math.sin(angle) * (radius + 20);
+        ctx.fillStyle = "rgba(218, 229, 232, 0.42)";
+        ctx.fillText(name, x, y);
+      });
+      ctx.restore();
+    }
+
+    function drawMiniBar(x, y, width, progress, color, background = "rgba(0, 0, 0, 0.54)") {
+      ctx.fillStyle = background;
+      ctx.fillRect(x - width / 2, y, width, 4);
+      ctx.fillStyle = color;
+      ctx.fillRect(x - width / 2, y, width * clamp(progress, 0, 1), 4);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.24)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - width / 2, y, width, 4);
+    }
+
+    function roundedRectPath(x, y, width, height, radius) {
+      const r = Math.min(radius, width / 2, height / 2);
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + width - r, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+      ctx.lineTo(x + width, y + height - r);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+      ctx.lineTo(x + r, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+    }
+
+    function drawBreaches(dt) {
+      state.breaches.forEach((breach) => {
+        if (!breach.active) return;
+        const p = slotToWorld(breach.slot);
+        breach.visiblePulse = Math.max(0, breach.visiblePulse - dt * 2.4);
+        const major = breach.stage === 2;
+        const radius = major ? 14 : 9 + breach.progress * 4;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate((breach.id * 0.63) % Math.PI);
+        ctx.fillStyle = major ? "#050303" : "#12100a";
+        ctx.strokeStyle = major ? "rgba(239, 62, 86, 0.92)" : "rgba(255, 204, 74, 0.9)";
+        ctx.lineWidth = major ? 3 : 2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, radius * 1.1, radius * 0.66, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        if (breach.visiblePulse > 0) {
+          ctx.strokeStyle = `rgba(255, 255, 255, ${breach.visiblePulse * 0.45})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, radius * 1.7, radius * 1.05, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+        drawMiniBar(p.x, p.y + radius + 6, major ? 34 : 28, major ? 1 : breach.progress, major ? "#ef3e56" : "#ffcc4a");
+      });
+    }
+
+    function defectColor(defect) {
+      if (defect.tier >= 3) return "#ef3e56";
+      if (defect.tier === 2) return "#ff7b45";
+      if (defect.tier === 1) return "#ffcc4a";
+      return defect.reinforced ? "#5bb7f0" : "#78858c";
+    }
+
+    function drawDefects(dt) {
+      ctx.font = "700 8px Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      state.defects.forEach((defect) => {
+        const p = slotToWorld(defect.slot);
+        defect.pulse = Math.max(0, defect.pulse - dt * 1.8);
+        const color = defectColor(defect);
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.fillStyle = "rgba(5, 8, 12, 0.78)";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = defect.reinforced ? 3 : 2;
+        ctx.beginPath();
+        roundedRectPath(-11, -11, 22, 22, 5);
+        ctx.fill();
+        ctx.stroke();
+        if (defect.reinforced) {
+          ctx.strokeStyle = "rgba(91, 183, 240, 0.55)";
+          ctx.beginPath();
+          ctx.moveTo(-6, 0);
+          ctx.lineTo(-1, 5);
+          ctx.lineTo(7, -6);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = defect.tier ? "#0a0c10" : "rgba(230, 236, 238, 0.72)";
+          ctx.fillText(defect.tier || "-", 0, 1);
+        }
+        if (defect.pulse > 0) {
+          ctx.strokeStyle = `rgba(255, 255, 255, ${defect.pulse * 0.4})`;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(-15, -15, 30, 30);
+        }
+        ctx.restore();
+        drawMiniBar(p.x, p.y + 15, 25, defect.tier >= 3 ? 1 : defect.progress, color, "rgba(0, 0, 0, 0.46)");
+      });
+    }
+
+    function drawMissiles(dt) {
+      for (let i = state.missiles.length - 1; i >= 0; i--) {
+        const missile = state.missiles[i];
+        const type = missiles[missile.type];
+        const step = type.speed * dt;
+        const remaining = distance(missile, missile.impact);
+        if (remaining <= step) {
+          impactMissile(missile);
+          state.missiles.splice(i, 1);
+          continue;
+        }
+        missile.x += missile.vx * step;
+        missile.y += missile.vy * step;
+        ctx.save();
+        ctx.translate(missile.x, missile.y);
+        ctx.rotate(Math.atan2(missile.vy, missile.vx));
+        ctx.fillStyle = type.color;
+        ctx.shadowColor = type.color;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.moveTo(10, 0);
+        ctx.lineTo(-8, -type.radius);
+        ctx.lineTo(-5, 0);
+        ctx.lineTo(-8, type.radius);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawSparks(dt) {
+      for (let i = state.sparks.length - 1; i >= 0; i--) {
+        const spark = state.sparks[i];
+        spark.life -= dt;
+        if (spark.life <= 0) {
+          state.sparks.splice(i, 1);
+          continue;
+        }
+        spark.x += spark.vx * dt;
+        spark.y += spark.vy * dt;
+        spark.vx *= 0.94;
+        spark.vy *= 0.94;
+        ctx.globalAlpha = clamp(spark.life * 2.2, 0, 1);
+        ctx.fillStyle = spark.color;
+        ctx.fillRect(spark.x - 1.5, spark.y - 1.5, 3, 3);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function drawBackground() {
+      ctx.clearRect(0, 0, state.width, state.height);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.28)";
+      for (let i = 0; i < 80; i++) {
+        const x = (i * 167.7 + 31) % state.width;
+        const y = (i * 91.3 + 47) % state.height;
+        const size = i % 9 === 0 ? 1.8 : 1;
+        ctx.globalAlpha = i % 7 === 0 ? 0.45 : 0.22;
+        ctx.fillRect(x, y, size, size);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    let lastTime = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+      drawBackground();
+      drawDirectionRing();
+      drawShipShape();
+      drawDefects(dt);
+      drawBreaches(dt);
+      drawMissiles(dt);
+      drawSparks(dt);
+      requestAnimationFrame(frame);
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      if (hitTestRepair(x, y)) return;
+      fireMissile(x, y);
+    });
+
+    missileButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        state.selectedMissile = Number(button.dataset.missile);
+        missileButtons.forEach((item) => item.classList.toggle("active", item === button));
+      });
+    });
+
+    breachModeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        state.breachMode = button.dataset.breachMode;
+        breachModeButtons.forEach((item) => item.classList.toggle("active", item === button));
+        updateHud();
+      });
+    });
+    repairWorst.addEventListener("click", repairWorstTarget);
+    repairAll.addEventListener("click", repairEverything);
+    resetSim.addEventListener("click", resetState);
+    window.addEventListener("resize", resize);
+
+    resize();
+    resetState();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
