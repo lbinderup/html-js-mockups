@@ -572,6 +572,150 @@
       return group;
     }
 
+    function createClusterMineMesh() {
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.42, 0.52, 0.24, 10),
+        new THREE.MeshStandardMaterial({ color: 0x35393a, roughness: 0.62, metalness: 0.34 })
+      );
+      body.castShadow = true;
+      body.receiveShadow = true;
+      group.add(body);
+
+      const top = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.25, 0.3, 0.06, 10),
+        new THREE.MeshStandardMaterial({ color: 0x5b6466, roughness: 0.5, metalness: 0.42 })
+      );
+      top.position.y = 0.15;
+      top.castShadow = true;
+      group.add(top);
+
+      const diode = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0xff2525, transparent: true, opacity: 0.35 })
+      );
+      diode.position.set(0, 0.21, -0.16);
+      diode.userData.isMineDiode = true;
+      group.userData.diode = diode;
+      group.add(diode);
+
+      const collider = new THREE.Mesh(
+        new THREE.SphereGeometry(0.8, 10, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      group.add(collider);
+      return group;
+    }
+
+    function createOilDrumMesh() {
+      const group = new THREE.Group();
+      const drum = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.36, 0.36, 0.85, 18),
+        new THREE.MeshStandardMaterial({ color: 0x3b4b4f, roughness: 0.48, metalness: 0.46 })
+      );
+      drum.castShadow = true;
+      drum.receiveShadow = true;
+      group.add(drum);
+
+      for (let y of [-0.32, 0.32]) {
+        const band = new THREE.Mesh(
+          new THREE.TorusGeometry(0.36, 0.025, 8, 24),
+          new THREE.MeshStandardMaterial({ color: 0x20282a, roughness: 0.44, metalness: 0.62 })
+        );
+        band.position.y = y;
+        band.rotation.x = Math.PI / 2;
+        group.add(band);
+      }
+
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 0.04, 10),
+        new THREE.MeshStandardMaterial({ color: 0x15191a, roughness: 0.35, metalness: 0.5 })
+      );
+      cap.position.set(0.16, 0.45, 0.12);
+      group.add(cap);
+
+      const collider = new THREE.Mesh(
+        new THREE.SphereGeometry(0.78, 10, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      group.add(collider);
+      return group;
+    }
+
+    function createFireBombMesh() {
+      const group = new THREE.Group();
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(0.38, 16, 12),
+        new THREE.MeshStandardMaterial({ color: 0x5a2118, emissive: 0x260900, roughness: 0.45, metalness: 0.18 })
+      );
+      shell.castShadow = true;
+      shell.receiveShadow = true;
+      group.add(shell);
+
+      const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 14, 10),
+        new THREE.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0.24, depthWrite: false })
+      );
+      group.add(glow);
+
+      const wick = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.045, 0.36, 8),
+        new THREE.MeshStandardMaterial({ color: 0x2a1711, roughness: 0.8, metalness: 0.02 })
+      );
+      wick.position.y = 0.4;
+      wick.rotation.z = -0.24;
+      group.add(wick);
+
+      const collider = new THREE.Mesh(
+        new THREE.SphereGeometry(0.78, 10, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      group.add(collider);
+      return group;
+    }
+
+    function createTeslaGeneratorMesh() {
+      const group = new THREE.Group();
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.38, 0.48, 0.24, 14),
+        new THREE.MeshStandardMaterial({ color: 0x27343a, roughness: 0.42, metalness: 0.58 })
+      );
+      base.castShadow = true;
+      base.receiveShadow = true;
+      group.add(base);
+
+      const mast = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.09, 0.72, 10),
+        new THREE.MeshStandardMaterial({ color: 0x9caeb6, roughness: 0.32, metalness: 0.82 })
+      );
+      mast.position.y = 0.42;
+      mast.castShadow = true;
+      group.add(mast);
+
+      const coilMaterial = new THREE.MeshBasicMaterial({ color: 0x85eaff, transparent: true, opacity: 0.82 });
+      for (let i = 0; i < 4; i++) {
+        const coil = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.012, 6, 28), coilMaterial);
+        coil.position.y = 0.22 + i * 0.13;
+        coil.rotation.x = Math.PI / 2;
+        group.add(coil);
+      }
+
+      const orb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16, 14, 10),
+        new THREE.MeshBasicMaterial({ color: 0xbaf8ff, transparent: true, opacity: 0.9 })
+      );
+      orb.position.y = 0.86;
+      group.userData.teslaOrb = orb;
+      group.add(orb);
+
+      const collider = new THREE.Mesh(
+        new THREE.SphereGeometry(0.82, 10, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      group.add(collider);
+      return group;
+    }
+
     function createSawbladeMesh() {
       const group = new THREE.Group();
       const blade = new THREE.Mesh(
@@ -784,6 +928,98 @@
           return flat.multiplyScalar(8.5 + power * 13.5);
         },
       },
+      clusterMine: {
+        label: "Cluster mine",
+        groundOffset: 0.14,
+        throwGravity: 15,
+        createMesh: createClusterMineMesh,
+        holdPose(item, t) {
+          item.mesh.position.set(-0.1, 0.58, -1.14);
+          item.mesh.rotation.set(0.12, t * 0.45, -0.1);
+        },
+        aimPose(item) {
+          item.mesh.position.set(-0.08, 0.76, -1.32);
+          item.mesh.rotation.set(-0.16, 0.2, -0.05);
+        },
+        meleePose(item, progress) {
+          const p = smoothstep(progress);
+          item.mesh.position.set(-0.08, 0.45 - p * 0.22, -1.0 - p * 0.9);
+          item.mesh.rotation.set(-0.12 + p * 0.75, 0.34, -0.08);
+        },
+        throwVelocity(dir) {
+          const power = arguments.length > 1 ? arguments[1] : 1;
+          return dir.clone().normalize().multiplyScalar(10 + power * 12).add(new THREE.Vector3(0, 4.0 + power * 4.2, 0));
+        },
+      },
+      oilDrum: {
+        label: "Oil drum",
+        groundOffset: 0.44,
+        throwGravity: 16,
+        createMesh: createOilDrumMesh,
+        holdPose(item, t) {
+          item.mesh.position.set(0.14, 0.62, -1.12);
+          item.mesh.rotation.set(1.35, 0.18 + t * 0.35, -0.16);
+        },
+        aimPose(item) {
+          item.mesh.position.set(0.1, 0.78, -1.28);
+          item.mesh.rotation.set(1.25, 0.26, -0.1);
+        },
+        meleePose(item, progress) {
+          const p = smoothstep(progress);
+          item.mesh.position.set(0.12, 0.46 - p * 0.24, -1.0 - p * 1.02);
+          item.mesh.rotation.set(1.2 + p * 0.8, 0.28 + p * 0.55, -0.16);
+        },
+        throwVelocity(dir) {
+          const power = arguments.length > 1 ? arguments[1] : 1;
+          return dir.clone().normalize().multiplyScalar(9 + power * 11).add(new THREE.Vector3(0, 3.8 + power * 4.0, 0));
+        },
+      },
+      fireBomb: {
+        label: "Fire bomb",
+        groundOffset: 0.38,
+        throwGravity: 15,
+        createMesh: createFireBombMesh,
+        holdPose(item, t) {
+          item.mesh.position.set(0.12, 0.62, -1.16);
+          item.mesh.rotation.set(0.08, t * 0.62, -0.12);
+        },
+        aimPose(item) {
+          item.mesh.position.set(0.1, 0.78, -1.32);
+          item.mesh.rotation.set(-0.18, 0.24, -0.08);
+        },
+        meleePose(item, progress) {
+          const p = smoothstep(progress);
+          item.mesh.position.set(0.12, 0.45 - p * 0.25, -1.0 - p * 1.0);
+          item.mesh.rotation.set(-0.18 + p * 0.9, 0.38 + p * 0.75, -0.12);
+        },
+        throwVelocity(dir) {
+          const power = arguments.length > 1 ? arguments[1] : 1;
+          return dir.clone().normalize().multiplyScalar(12 + power * 13).add(new THREE.Vector3(0, 4.6 + power * 4.4, 0));
+        },
+      },
+      teslaGenerator: {
+        label: "Tesla arc generator",
+        groundOffset: 0.18,
+        throwGravity: 15,
+        createMesh: createTeslaGeneratorMesh,
+        holdPose(item, t) {
+          item.mesh.position.set(-0.12, 0.6, -1.14);
+          item.mesh.rotation.set(0.12, t * 0.5, -0.08);
+        },
+        aimPose(item) {
+          item.mesh.position.set(-0.08, 0.78, -1.32);
+          item.mesh.rotation.set(-0.14, 0.2, -0.06);
+        },
+        meleePose(item, progress) {
+          const p = smoothstep(progress);
+          item.mesh.position.set(-0.08, 0.46 - p * 0.22, -1.0 - p * 0.95);
+          item.mesh.rotation.set(-0.1 + p * 0.75, 0.3, -0.08);
+        },
+        throwVelocity(dir) {
+          const power = arguments.length > 1 ? arguments[1] : 1;
+          return dir.clone().normalize().multiplyScalar(10 + power * 12).add(new THREE.Vector3(0, 4.2 + power * 4.0, 0));
+        },
+      },
       sawblade: {
         label: "Curving sawblade",
         groundOffset: 0.18,
@@ -868,6 +1104,8 @@
     const rockPillars = [];
     const orbitalStrikes = [];
     const airstrikes = [];
+    const oilPatches = [];
+    const fireFields = [];
     const MAX_JAVELIN_IMPALES = 3;
     const JAVELIN_TIP_OFFSET = -3.35;
     const JAVELIN_POMMEL_OFFSETS = [-0.38, -1.18, -1.98];
@@ -967,6 +1205,14 @@
       ["airstrikeBeacon", 10, -16],
       ["gravitonBall", -6, 15],
       ["gravitonBall", 20, 5],
+      ["clusterMine", -2, 18],
+      ["clusterMine", 24, -12],
+      ["oilDrum", -16, 18],
+      ["oilDrum", 22, 13],
+      ["fireBomb", -22, 4],
+      ["fireBomb", 14, -20],
+      ["teslaGenerator", 4, 18],
+      ["teslaGenerator", -24, -10],
     ].forEach(([type, x, z]) => addItem(type, x, z));
 
     function createRockPillar(x, z, radius = 1.05, height = 5.6) {
@@ -1060,6 +1306,40 @@
       return limbs;
     }
 
+    function createExplosiveBugMesh() {
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0xc6342e,
+        emissive: 0x220000,
+        roughness: 0.48,
+        metalness: 0.08,
+      });
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.48, 18, 12), bodyMaterial);
+      mesh.scale.set(1.12, 0.78, 1.0);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.baseColor = 0xc6342e;
+      mesh.userData.flashColor = 0xff1919;
+
+      const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x160808 });
+      for (let i = 0; i < 2; i++) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), eyeMaterial);
+        eye.position.set(i ? -0.14 : 0.14, 0.1, -0.42);
+        mesh.add(eye);
+      }
+
+      const legMaterial = new THREE.MeshStandardMaterial({ color: 0x451313, roughness: 0.74, metalness: 0.04 });
+      for (let i = 0; i < 6; i++) {
+        const side = i % 2 ? -1 : 1;
+        const row = Math.floor(i / 2) - 1;
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.028, 0.54, 6), legMaterial);
+        leg.position.set(side * 0.42, -0.12, row * 0.22);
+        leg.rotation.set(0.75, 0, side * 1.05);
+        leg.castShadow = true;
+        mesh.add(leg);
+      }
+      return mesh;
+    }
+
     function animateEnemyLimbs(enemy, t, intensity = 1) {
       for (let i = 0; i < enemy.limbs.length; i++) {
         const limb = enemy.limbs[i];
@@ -1080,19 +1360,22 @@
 
     function createEnemy(x, z, type = "grunt") {
       const isBluePillar = type === "bluePillar";
-      const mesh = new THREE.Mesh(
-        isBluePillar ? new THREE.CylinderGeometry(0.42, 0.5, 1.75, 8) : new THREE.ConeGeometry(0.28, 0.9, 3),
-        new THREE.MeshStandardMaterial({
-          color: isBluePillar ? 0x2f79d0 : 0xb94545,
-          emissive: isBluePillar ? 0x061a36 : 0x000000,
-          roughness: isBluePillar ? 0.55 : 0.72,
-          metalness: isBluePillar ? 0.14 : 0.05,
-        })
-      );
+      const isExplosiveBug = type === "explosiveBug";
+      const mesh = isExplosiveBug
+        ? createExplosiveBugMesh()
+        : new THREE.Mesh(
+          isBluePillar ? new THREE.CylinderGeometry(0.42, 0.5, 1.75, 8) : new THREE.ConeGeometry(0.28, 0.9, 3),
+          new THREE.MeshStandardMaterial({
+            color: isBluePillar ? 0x2f79d0 : 0xb94545,
+            emissive: isBluePillar ? 0x061a36 : 0x000000,
+            roughness: isBluePillar ? 0.55 : 0.72,
+            metalness: isBluePillar ? 0.14 : 0.05,
+          })
+        );
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       const limbs = addCrabLimbs(mesh, isBluePillar);
-      const groundOffset = isBluePillar ? 0.88 : 0.45;
+      const groundOffset = isBluePillar ? 0.88 : isExplosiveBug ? 0.36 : 0.45;
       mesh.position.set(x, heightAt(x, z) + groundOffset, z);
       mesh.rotation.y = Math.random() * TAU;
       scene.add(mesh);
@@ -1100,11 +1383,11 @@
         type,
         mesh,
         state: "alive",
-        hp: isBluePillar ? 4 : 3,
-        maxHp: isBluePillar ? 4 : 3,
-        radius: isBluePillar ? 0.9 : 0.38,
+        hp: isBluePillar ? 4 : isExplosiveBug ? 2 : 3,
+        maxHp: isBluePillar ? 4 : isExplosiveBug ? 2 : 3,
+        radius: isBluePillar ? 0.9 : isExplosiveBug ? 0.52 : 0.38,
         groundOffset,
-        speed: isBluePillar ? 1.35 : 2.0,
+        speed: isBluePillar ? 1.35 : isExplosiveBug ? 2.35 : 2.0,
         stunT: 0,
         velocity: new THREE.Vector3(),
         deathT: 0,
@@ -1112,6 +1395,8 @@
         impaledOn: null,
         limbs,
         goreStage: 0,
+        explosiveFuseHits: 0,
+        explosiveFlashT: 0,
       };
       mesh.traverse((child) => {
         child.userData.enemy = enemy;
@@ -1128,7 +1413,8 @@
       for (let i = 0; i < count; i++) {
         const r = Math.sqrt(Math.random()) * 8.5;
         const a = Math.random() * TAU;
-        createEnemy(centerX + Math.cos(a) * r, centerZ + Math.sin(a) * r, Math.random() < 0.12 ? "bluePillar" : "grunt");
+        const roll = Math.random();
+        createEnemy(centerX + Math.cos(a) * r, centerZ + Math.sin(a) * r, roll < 0.08 ? "explosiveBug" : roll < 0.2 ? "bluePillar" : "grunt");
       }
     }
 
@@ -1326,6 +1612,9 @@
       if (!highlightedItem || player.action) return;
       player.heldItem = highlightedItem;
       player.heldItem.state = "held";
+      player.heldItem.deployedMine = false;
+      player.heldItem.deployedTesla = false;
+      player.heldItem.mineTriggered = false;
       setPickupOutline(player.heldItem, false);
       mech.upperPitch.attach(player.heldItem.mesh);
       startAction("pickup", 0.28);
@@ -1397,6 +1686,9 @@
         );
       }
       item.embeddedInPillar = false;
+      item.deployedMine = false;
+      item.deployedTesla = false;
+      item.mineTriggered = false;
       item.state = "thrown";
       item.throwAge = 0;
       item.launchOrigin = player.position.clone();
@@ -1629,6 +1921,496 @@
       }
 
       if (sourceItem) consumeItem(sourceItem);
+    }
+
+    function removeEnemyImmediately(enemy) {
+      if (enemy.impaledOn) releaseImpaledEnemy(enemy, enemy.impaledOn);
+      scene.attach(enemy.mesh);
+      scene.remove(enemy.mesh);
+      disposeObject(enemy.mesh);
+      const index = enemies.indexOf(enemy);
+      if (index >= 0) enemies.splice(index, 1);
+    }
+
+    function setExplosiveBugFlash(enemy, intensity) {
+      if (enemy.type !== "explosiveBug" || !enemy.mesh.material) return;
+      const hot = intensity > 0.5;
+      enemy.mesh.material.color.setHex(hot ? 0xff1919 : 0xc6342e);
+      if (enemy.mesh.material.emissive) enemy.mesh.material.emissive.setHex(hot ? 0x8a0000 : 0x220000);
+      enemy.mesh.scale.setScalar(1 + intensity * 0.08);
+      enemy.mesh.scale.y *= 0.78;
+    }
+
+    function updateExplosiveBugFlash(enemy, dt, speed, duty = 0.42) {
+      enemy.explosiveFlashT = (enemy.explosiveFlashT || 0) + dt * speed;
+      const phase = (Math.sin(enemy.explosiveFlashT * TAU) + 1) * 0.5;
+      setExplosiveBugFlash(enemy, phase > 1 - duty ? 1 : 0);
+    }
+
+    function explodeExplosiveBug(enemy, pos = null) {
+      if (!enemy || enemy.exploded) return false;
+      enemy.exploded = true;
+      const origin = pos ? pos.clone() : enemy.mesh.position.clone();
+      if (enemy.mesh.parent !== scene) enemy.mesh.getWorldPosition(origin);
+
+      spawnShockwave(origin, 5.8);
+      spawnImpact(origin, 0xff3030, 68, 7.4);
+      spawnGoo(origin, 0xff3b24, 32);
+
+      for (const target of [...enemies]) {
+        if (target === enemy || target.state !== "alive") continue;
+        const dist = target.mesh.position.distanceTo(origin);
+        if (dist > 5.6 + target.radius) continue;
+        const falloff = 1 - clamp(dist / 5.6, 0, 1);
+        tmpVec.subVectors(target.mesh.position, origin);
+        tmpVec.y = 0;
+        if (tmpVec.lengthSq() < 0.0001) tmpVec.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+        tmpVec.normalize().multiplyScalar(9 + falloff * 11);
+        tmpVec.y = 2.4 + falloff * 3.2;
+        target.hp -= 2.2 + falloff * 2.0;
+        if (target.hp <= 0) {
+          killEnemy(target, tmpVec, null, 0.2);
+        } else {
+          knockEnemy(target, tmpVec, target.type === "bluePillar" ? 1.2 : 0.7);
+        }
+      }
+
+      tmpVec.subVectors(player.position, origin);
+      tmpVec.y = 0;
+      const playerDist = tmpVec.length();
+      if (playerDist < 5.4) {
+        if (tmpVec.lengthSq() < 0.0001) tmpVec.set(-Math.sin(player.cameraYaw), 0, Math.cos(player.cameraYaw));
+        tmpVec.normalize().multiplyScalar(8.5 + (1 - playerDist / 5.4) * 7);
+        player.knockback.x += tmpVec.x;
+        player.knockback.z += tmpVec.z;
+      }
+
+      removeEnemyImmediately(enemy);
+      return true;
+    }
+
+    function makeGroundDisc(pos, radius, color, opacity) {
+      const mesh = new THREE.Mesh(
+        new THREE.CircleGeometry(radius, 48),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(pos.x, heightAt(pos.x, pos.z) + 0.035, pos.z);
+      mesh.renderOrder = 2;
+      scene.add(mesh);
+      return mesh;
+    }
+
+    function deployClusterMine(item) {
+      const projectileIndex = projectiles.indexOf(item);
+      if (projectileIndex >= 0) projectiles.splice(projectileIndex, 1);
+      item.velocity.set(0, 0, 0);
+      item.spin.set(0, 0, 0);
+      item.state = "free";
+      item.deployedMine = true;
+      item.mineTriggered = false;
+      item.mineTriggerT = 0;
+      item.mineBlinkT = 0;
+      item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
+      item.mesh.rotation.set(0, Math.random() * TAU, 0);
+      setPickupOutline(item, false);
+      spawnImpact(item.mesh.position, 0xff4545, 8, 1.4);
+    }
+
+    function spawnMineBomblets(pos) {
+      for (let i = 0; i < 6; i++) {
+        const a = i * TAU / 6;
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.13, 10, 8),
+          new THREE.MeshStandardMaterial({ color: 0x2a2b2c, emissive: 0x330000, roughness: 0.5, metalness: 0.35 })
+        );
+        mesh.position.copy(pos).add(new THREE.Vector3(0, 0.25, 0));
+        mesh.velocity = new THREE.Vector3(Math.cos(a) * 6.2, 6.4, Math.sin(a) * 6.2);
+        mesh.spin = new THREE.Vector3((Math.random() - 0.5) * 8, 8 + Math.random() * 4, (Math.random() - 0.5) * 8);
+        mesh.life = 1.0;
+        mesh.maxLife = mesh.life;
+        mesh.isBomblet = true;
+        scene.add(mesh);
+        particles.push(mesh);
+      }
+      spawnImpact(pos, 0xff3535, 14, 2.2);
+    }
+
+    function triggerClusterMine(item) {
+      if (item.mineTriggered) return;
+      item.mineTriggered = true;
+      item.mineTriggerT = 0;
+      item.mineBlinkT = 0;
+      spawnImpact(item.mesh.position, 0xff2525, 10, 1.6);
+    }
+
+    function deployTeslaGenerator(item) {
+      const projectileIndex = projectiles.indexOf(item);
+      if (projectileIndex >= 0) projectiles.splice(projectileIndex, 1);
+      item.velocity.set(0, 0, 0);
+      item.spin.set(0, 0, 0);
+      item.state = "free";
+      item.deployedTesla = true;
+      item.teslaPulseT = 0;
+      item.teslaCooldowns = new Map();
+      item.teslaRelayArcs = new Map();
+      item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
+      item.mesh.rotation.set(0, Math.random() * TAU, 0);
+      setPickupOutline(item, false);
+      spawnImpact(item.mesh.position, 0x85eaff, 14, 2.0);
+    }
+
+    function beamPommelWorld(item) {
+      return item.mesh.localToWorld(new THREE.Vector3(0, 0, 0));
+    }
+
+    function isTeslaMetalItem(item) {
+      return item && (item.type === "beam" || item.type === "sawblade");
+    }
+
+    function canTeslaRelayItem(item) {
+      return isTeslaMetalItem(item) && item.mesh && item.state !== "held" && item.state !== "spent";
+    }
+
+    function teslaNodeWorld(item) {
+      if (item.type === "beam") {
+        return beamPommelWorld(item).add(new THREE.Vector3(0, 0.1, 0));
+      }
+      const pos = new THREE.Vector3();
+      item.mesh.getWorldPosition(pos);
+      pos.y += 0.18;
+      return pos;
+    }
+
+    function chargeMetalItem(item, seconds = 5) {
+      item.teslaChargeT = Math.max(item.teslaChargeT || 0, seconds);
+      item.teslaZapCooldowns = item.teslaZapCooldowns || new Map();
+      item.teslaChargeSparkT = Math.min(item.teslaChargeSparkT || 0, 0.11);
+    }
+
+    function createTeslaArc(start, end, color = 0x9feaff, life = 0.11) {
+      const points = [];
+      const steps = 6;
+      tmpVec.subVectors(end, start);
+      const length = Math.max(tmpVec.length(), 0.001);
+      const jitter = Math.min(0.48, length * 0.075);
+      for (let i = 0; i <= steps; i++) {
+        const a = i / steps;
+        const p = start.clone().lerp(end, a);
+        if (i > 0 && i < steps) {
+          p.x += (Math.random() - 0.5) * jitter;
+          p.y += (Math.random() - 0.5) * jitter;
+          p.z += (Math.random() - 0.5) * jitter;
+        }
+        points.push(p);
+      }
+      const arc = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(points),
+        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.92 })
+      );
+      arc.velocity = new THREE.Vector3();
+      arc.life = life + Math.random() * life * 0.35;
+      arc.maxLife = arc.life;
+      scene.add(arc);
+      particles.push(arc);
+      return arc;
+    }
+
+    function shockEnemyFromTesla(enemy, source, generator, now) {
+      const cooldown = generator.teslaCooldowns || (generator.teslaCooldowns = new Map());
+      if (now - (cooldown.get(enemy) || -100) < 0.42) return false;
+      cooldown.set(enemy, now);
+
+      enemy.hp -= enemy.type === "bluePillar" ? 0.75 : 1.1;
+      tmpVec.subVectors(enemy.mesh.position, source);
+      tmpVec.y = 0;
+      if (tmpVec.lengthSq() < 0.0001) tmpVec.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      tmpVec.normalize().multiplyScalar(5.4);
+      tmpVec.y = 1.7;
+      if (enemy.hp <= 0) {
+        killEnemy(enemy, tmpVec, null, 0.12);
+      } else {
+        knockEnemy(enemy, tmpVec, enemy.type === "bluePillar" ? 0.9 : 0.55);
+      }
+      createTeslaArc(source, enemy.mesh.position.clone().add(new THREE.Vector3(0, enemy.groundOffset * 0.35, 0)), 0xbaf8ff);
+      spawnImpact(enemy.mesh.position, 0x9feaff, 5, 1.1);
+      return true;
+    }
+
+    function shockEnemyFromChargedMetal(enemy, source, item, now) {
+      const cooldown = item.teslaZapCooldowns || (item.teslaZapCooldowns = new Map());
+      if (now - (cooldown.get(enemy) || -100) < 0.34) return false;
+      cooldown.set(enemy, now);
+
+      enemy.hp -= enemy.type === "bluePillar" ? 0.42 : 0.68;
+      tmpVec.subVectors(enemy.mesh.position, source);
+      tmpVec.y = 0;
+      if (tmpVec.lengthSq() < 0.0001) tmpVec.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      tmpVec.normalize().multiplyScalar(item.type === "sawblade" ? 4.7 : 4.0);
+      tmpVec.y = 1.25;
+      if (enemy.hp <= 0) {
+        killEnemy(enemy, tmpVec, null, 0.1);
+      } else {
+        knockEnemy(enemy, tmpVec, enemy.type === "bluePillar" ? 0.7 : 0.42);
+      }
+      createTeslaArc(source, enemy.mesh.position.clone().add(new THREE.Vector3(0, enemy.groundOffset * 0.45, 0)), 0xc7fbff, 0.09);
+      spawnImpact(enemy.mesh.position, 0x9feaff, 4, 0.85);
+      return true;
+    }
+
+    function updateTeslaGenerators(dt) {
+      for (const generator of items) {
+        if (generator.type !== "teslaGenerator" || generator.state !== "free" || !generator.deployedTesla) continue;
+        generator.teslaPulseT = (generator.teslaPulseT || 0) + dt;
+        const orb = generator.mesh.userData.teslaOrb;
+        if (orb) {
+          const pulse = 0.55 + Math.max(0, Math.sin(generator.teslaPulseT * 9)) * 0.45;
+          orb.scale.setScalar(0.9 + pulse * 0.35);
+          if (orb.material) orb.material.opacity = 0.55 + pulse * 0.4;
+        }
+
+        const relayRange = 8.4;
+        const shockRange = 5.7;
+        const relayArcTimes = generator.teslaRelayArcs || (generator.teslaRelayArcs = new Map());
+        const sources = [{
+          item: generator,
+          pos: generator.mesh.position.clone().add(new THREE.Vector3(0, 0.82, 0)),
+          depth: 0,
+        }];
+        const linkedMetal = new Set();
+        for (let depth = 0; depth < 3; depth++) {
+          let added = false;
+          for (const metal of items) {
+            if (!canTeslaRelayItem(metal) || linkedMetal.has(metal)) continue;
+            const metalPos = teslaNodeWorld(metal);
+            let best = null;
+            let bestDist = Infinity;
+            for (const source of sources) {
+              if (source.depth > depth) continue;
+              const dist = source.pos.distanceTo(metalPos);
+              if (dist < bestDist) {
+                bestDist = dist;
+                best = source;
+              }
+            }
+            if (best && bestDist <= relayRange) {
+              linkedMetal.add(metal);
+              chargeMetalItem(metal, 2.5);
+              metal.teslaLinkedFrameT = clock.elapsedTime;
+              const relay = { item: metal, pos: metalPos, depth: best.depth + 1 };
+              sources.push(relay);
+              added = true;
+              const lastArc = relayArcTimes.get(metal) || -100;
+              if (generator.teslaPulseT - lastArc > 0.09) {
+                relayArcTimes.set(metal, generator.teslaPulseT);
+                createTeslaArc(best.pos, relay.pos, 0x85eaff, 0.16);
+              }
+            }
+          }
+          if (!added) break;
+        }
+
+        const now = clock.elapsedTime;
+        for (const enemy of enemies) {
+          if (enemy.state !== "alive") continue;
+          let nearest = null;
+          let nearestDist = Infinity;
+          for (const source of sources) {
+            const dist = source.pos.distanceTo(enemy.mesh.position);
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearest = source;
+            }
+          }
+          if (nearest && nearestDist <= shockRange + enemy.radius) {
+            shockEnemyFromTesla(enemy, nearest.pos, generator, now);
+          }
+        }
+      }
+    }
+
+    function updateChargedMetalItems(dt) {
+      const now = clock.elapsedTime;
+      for (const item of items) {
+        if (!isTeslaMetalItem(item) || !(item.teslaChargeT > 0)) continue;
+        item.teslaChargeT = Math.max(0, item.teslaChargeT - dt);
+        if (!canTeslaRelayItem(item)) continue;
+
+        const linkedThisFrame = now - (item.teslaLinkedFrameT || -100) < 0.05;
+        const source = teslaNodeWorld(item);
+        item.teslaChargeSparkT = (item.teslaChargeSparkT || 0) + dt;
+        if (item.teslaChargeSparkT > 0.12) {
+          item.teslaChargeSparkT = 0;
+          spawnImpact(source, 0x9feaff, item.type === "sawblade" ? 3 : 2, 0.9);
+        }
+        if (linkedThisFrame) continue;
+
+        const zapRadius = item.type === "sawblade" ? 3.15 : 3.6;
+        for (const enemy of enemies) {
+          if (enemy.state !== "alive") continue;
+          if (enemy.mesh.position.distanceTo(source) <= zapRadius + enemy.radius) {
+            shockEnemyFromChargedMetal(enemy, source, item, now);
+          }
+        }
+      }
+    }
+
+    function spillOilDrum(item) {
+      const pos = item.mesh.position.clone();
+      pos.y = heightAt(pos.x, pos.z);
+      const radius = 6.6;
+      const mesh = makeGroundDisc(pos, radius, 0x111719, 0.58);
+      oilPatches.push({ pos: pos.clone(), radius, mesh, age: 0, duration: 34, ignited: false });
+      spawnImpact(pos, 0x111719, 34, 5.2);
+      consumeItem(item);
+    }
+
+    function canBurnEnemy(enemy) {
+      return !enemy.fireImmune;
+    }
+
+    function igniteEnemy(enemy, seconds = 3.4) {
+      if (!enemy || enemy.state !== "alive" || !canBurnEnemy(enemy)) return false;
+      enemy.burnT = Math.max(enemy.burnT || 0, seconds);
+      enemy.nextBurnSpark = 0;
+      return true;
+    }
+
+    function damageEnemyHeat(enemy, amount, sourcePos = null) {
+      if (enemy.state !== "alive") return false;
+      enemy.hp -= amount;
+      if (enemy.hp <= 0) {
+        const impulse = sourcePos
+          ? projectedImpulseFromHit(enemy, sourcePos, enemy.mesh.position.clone().sub(sourcePos).setY(0).normalize().multiplyScalar(7))
+          : new THREE.Vector3((Math.random() - 0.5) * 5, 2.5, (Math.random() - 0.5) * 5);
+        killEnemy(enemy, impulse, null, 0.16);
+        return true;
+      }
+      return false;
+    }
+
+    function findOilPatchAt(pos) {
+      for (const patch of oilPatches) {
+        if (patch.ignited) continue;
+        const dx = pos.x - patch.pos.x;
+        const dz = pos.z - patch.pos.z;
+        if (dx * dx + dz * dz <= patch.radius * patch.radius) return patch;
+      }
+      return null;
+    }
+
+    function createFireField(pos, radius = 5.6, duration = 8.0) {
+      const mesh = makeGroundDisc(pos, radius, 0xff5a1f, 0.34);
+      fireFields.push({ pos: pos.clone(), radius, duration, age: 0, mesh, lastSpark: 0 });
+      spawnShockwave(pos, radius * 1.1);
+      spawnImpact(pos, 0xff7a24, 54, radius);
+      return mesh;
+    }
+
+    function igniteOilPatch(patch, impactPos) {
+      patch.ignited = true;
+      patch.mesh.material.color.setHex(0x2a1208);
+      patch.mesh.material.opacity = 0.28;
+      createFireField(patch.pos, patch.radius * 1.05, 9.0);
+      spawnImpact(impactPos || patch.pos, 0xffa24a, 48, patch.radius);
+    }
+
+    function detonateFireBomb(item, pos = null) {
+      const impact = pos ? pos.clone() : item.mesh.position.clone();
+      const oilPatch = findOilPatchAt(impact);
+      if (oilPatch) {
+        igniteOilPatch(oilPatch, impact);
+      }
+
+      for (const enemy of enemies) {
+        if (enemy.state !== "alive") continue;
+        if (enemy.mesh.position.distanceTo(impact) > 3.2 + enemy.radius) continue;
+        igniteEnemy(enemy, 4.0);
+        damageEnemyHeat(enemy, 0.55, impact);
+      }
+      consumeItem(item);
+    }
+
+    function updateDeployedMines(dt) {
+      for (const item of [...items]) {
+        if (item.type !== "clusterMine" || item.state !== "free" || !item.deployedMine) continue;
+        item.mineBlinkT = (item.mineBlinkT || 0) + dt;
+        const diode = item.mesh.userData.diode;
+        if (diode && diode.material) {
+          const pulseSpeed = item.mineTriggered ? 24.0 : 3.0;
+          const pulse = 0.25 + Math.max(0, Math.sin(item.mineBlinkT * pulseSpeed)) * 0.75;
+          diode.material.opacity = 0.25 + pulse * 0.65;
+          diode.scale.setScalar(0.85 + pulse * 0.45);
+        }
+        if (item.mineTriggered) {
+          item.mineTriggerT = (item.mineTriggerT || 0) + dt;
+          if (item.mineTriggerT >= 1.0) {
+            const pos = item.mesh.position.clone();
+            spawnMineBomblets(pos);
+            consumeItem(item);
+          }
+          continue;
+        }
+        for (const enemy of enemies) {
+          if (enemy.state !== "alive") continue;
+          if (enemy.mesh.position.distanceTo(item.mesh.position) <= 1.35 + enemy.radius) {
+            triggerClusterMine(item);
+            break;
+          }
+        }
+      }
+    }
+
+    function enemyOilSlowMultiplier(enemy) {
+      let slow = 1;
+      for (const patch of oilPatches) {
+        if (patch.ignited) continue;
+        const dx = enemy.mesh.position.x - patch.pos.x;
+        const dz = enemy.mesh.position.z - patch.pos.z;
+        if (dx * dx + dz * dz <= patch.radius * patch.radius) slow = Math.min(slow, 0.38);
+      }
+      return slow;
+    }
+
+    function updateHazards(dt) {
+      for (let i = oilPatches.length - 1; i >= 0; i--) {
+        const patch = oilPatches[i];
+        patch.age += dt;
+        const fade = clamp(1 - Math.max(0, patch.age - patch.duration + 5) / 5, 0, 1);
+        patch.mesh.material.opacity = (patch.ignited ? 0.22 : 0.58) * fade;
+        if (patch.age > patch.duration) {
+          scene.remove(patch.mesh);
+          disposeObject(patch.mesh);
+          oilPatches.splice(i, 1);
+        }
+      }
+
+      for (let i = fireFields.length - 1; i >= 0; i--) {
+        const field = fireFields[i];
+        field.age += dt;
+        const fade = clamp(1 - field.age / field.duration, 0, 1);
+        field.mesh.material.opacity = 0.34 * fade;
+        field.mesh.scale.setScalar(1 + Math.sin(field.age * 8) * 0.025);
+        if (field.age - field.lastSpark > 0.08) {
+          field.lastSpark = field.age;
+          const a = Math.random() * TAU;
+          const r = Math.sqrt(Math.random()) * field.radius;
+          spawnImpact(new THREE.Vector3(field.pos.x + Math.cos(a) * r, heightAt(field.pos.x, field.pos.z) + 0.15, field.pos.z + Math.sin(a) * r), 0xff6a24, 2, 1.2);
+        }
+        for (const enemy of enemies) {
+          if (enemy.state !== "alive") continue;
+          const dx = enemy.mesh.position.x - field.pos.x;
+          const dz = enemy.mesh.position.z - field.pos.z;
+          if (dx * dx + dz * dz > (field.radius + enemy.radius) * (field.radius + enemy.radius)) continue;
+          igniteEnemy(enemy, 2.4);
+          damageEnemyHeat(enemy, dt * 0.58, field.pos);
+        }
+        if (field.age > field.duration) {
+          scene.remove(field.mesh);
+          disposeObject(field.mesh);
+          fireFields.splice(i, 1);
+        }
+      }
     }
 
     function deployOrbitalBeacon(item) {
@@ -1889,6 +2671,9 @@
 
     function dismemberEnemy(enemy, hitPoint, impulse) {
       if (enemy.state !== "alive") return false;
+      if (enemy.type === "explosiveBug") {
+        return explodeExplosiveBug(enemy, hitPoint);
+      }
 
       tmpVec.subVectors(enemy.mesh.position, hitPoint);
       tmpVec.y = 0;
@@ -1926,6 +2711,17 @@
       if (!item || item.type !== "beam" || !item.impaledEnemies || item.impaledEnemies.length === 0) return;
       const targets = [...item.impaledEnemies];
       for (const enemy of targets) {
+        if (enemy.type === "explosiveBug") {
+          enemy.explosiveFuseHits = (enemy.explosiveFuseHits || 0) + 1;
+          enemy.explosiveFlashT = 0;
+          const worldPos = new THREE.Vector3();
+          enemy.mesh.getWorldPosition(worldPos);
+          spawnImpact(worldPos, 0xff3030, 8 + enemy.explosiveFuseHits * 2, 1.2 + enemy.explosiveFuseHits * 0.4);
+          if (enemy.explosiveFuseHits >= 4) {
+            explodeExplosiveBug(enemy, worldPos);
+          }
+          continue;
+        }
         let detached = false;
         for (let i = 0; i < 2; i++) {
           detached = detachEnemyLimb(enemy) || detached;
@@ -1954,12 +2750,17 @@
       enemy.mesh.position.y = enemy.impaleOffset;
       enemy.mesh.position.z = (index - 1) * 0.14;
       enemy.mesh.rotation.set(1.1, 0.2 + index * 0.18, 0.4 - index * 0.12);
+      enemy.explosiveFuseHits = enemy.type === "explosiveBug" ? 1 : enemy.explosiveFuseHits;
+      enemy.explosiveFlashT = 0;
       item.impaledEnemies.push(enemy);
       return true;
     }
 
     function killEnemy(enemy, impulse, impaleItem = null, liftScale = 1) {
       if (enemy.state !== "alive") return false;
+      if (enemy.type === "explosiveBug" && !impaleItem) {
+        return explodeExplosiveBug(enemy, enemy.mesh.position);
+      }
       enemy.state = "dead";
       enemy.velocity.copy(impulse);
       enemy.velocity.x *= 1.45;
@@ -2682,10 +3483,31 @@
           }
         }
 
+        if (item.type === "fireBomb") {
+          const oilPatch = findOilPatchAt(item.mesh.position);
+          if (oilPatch) {
+            detonateFireBomb(item, item.mesh.position);
+            continue;
+          }
+          let fireHit = false;
+          for (const enemy of enemies) {
+            if (enemy.state !== "alive") continue;
+            if (enemy.mesh.position.distanceTo(item.mesh.position) <= 1.1 + enemy.radius) {
+              igniteEnemy(enemy, 4.0);
+              fireHit = true;
+            }
+          }
+          if (fireHit) {
+            detonateFireBomb(item, item.mesh.position);
+            continue;
+          }
+        }
+
         const hitRadius = item.type === "beam" ? 0.75 : 1.35;
         const impulse = item.velocity.clone().multiplyScalar(item.type === "beam" ? 0.75 : 0.55);
         const hitCenter = item.type === "beam" ? javelinTipWorld(item) : item.mesh.position;
-        const enemyHits = item.type === "beacon" || item.type === "airstrikeBeacon" || item.type === "heldEnemy" ? 0 : hitEnemies(hitCenter, item.type === "sawblade" ? 0.95 : hitRadius, impulse, item.type === "beam" ? item : null, { dismember: item.type === "sawblade" });
+        const noGenericHit = item.type === "beacon" || item.type === "airstrikeBeacon" || item.type === "heldEnemy" || item.type === "clusterMine" || item.type === "oilDrum" || item.type === "fireBomb" || item.type === "teslaGenerator";
+        const enemyHits = noGenericHit ? 0 : hitEnemies(hitCenter, item.type === "sawblade" ? 0.95 : hitRadius, impulse, item.type === "beam" ? item : null, { dismember: item.type === "sawblade" });
         if (item.type === "bomb" && enemyHits > 0) {
           explodeAt(item.mesh.position.clone(), 7.2, 24, false, item);
           continue;
@@ -2727,6 +3549,26 @@
             explodeAt(item.mesh.position.clone(), 7.2, 24, false, item);
             continue;
           }
+          if (item.type === "clusterMine") {
+            item.mesh.position.y = groundY;
+            deployClusterMine(item);
+            continue;
+          }
+          if (item.type === "oilDrum") {
+            item.mesh.position.y = groundY;
+            spillOilDrum(item);
+            continue;
+          }
+          if (item.type === "fireBomb") {
+            item.mesh.position.y = groundY;
+            detonateFireBomb(item, item.mesh.position);
+            continue;
+          }
+          if (item.type === "teslaGenerator") {
+            item.mesh.position.y = groundY;
+            deployTeslaGenerator(item);
+            continue;
+          }
           item.mesh.position.y = groundY;
           item.velocity.set(0, 0, 0);
           item.state = "free";
@@ -2765,6 +3607,9 @@
           p.material.opacity = fade;
         }
         if (p.life <= 0) {
+          if (p.isBomblet) {
+            explodeAt(p.position.clone(), 4.8, 18, false, null);
+          }
           scene.remove(p);
           if (p.isDebris || p.isShockwave) {
             disposeObject(p);
@@ -2781,6 +3626,27 @@
       for (let i = enemies.length - 1; i >= 0; i--) {
         const enemy = enemies[i];
         if (enemy.state === "alive") {
+          if (enemy.type === "explosiveBug") {
+            const playerDist = enemy.mesh.position.distanceTo(player.position);
+            if (playerDist <= 1.55 + enemy.radius) {
+              explodeExplosiveBug(enemy, enemy.mesh.position);
+              continue;
+            }
+            if (playerDist < 6.2) {
+              const near = 1 - clamp((playerDist - 1.55) / 4.65, 0, 1);
+              updateExplosiveBugFlash(enemy, dt, 2.0 + near * 8.5, 0.28 + near * 0.38);
+            } else {
+              setExplosiveBugFlash(enemy, 0);
+            }
+          }
+          if (enemy.burnT > 0) {
+            enemy.burnT = Math.max(0, enemy.burnT - dt);
+            if (!enemy.nextBurnSpark || clock.elapsedTime >= enemy.nextBurnSpark) {
+              enemy.nextBurnSpark = clock.elapsedTime + 0.12 + Math.random() * 0.08;
+              spawnImpact(enemy.mesh.position.clone().add(new THREE.Vector3(0, enemy.groundOffset * 0.45, 0)), 0xff6a24, 3, 0.9);
+            }
+            if (damageEnemyHeat(enemy, dt * 0.42, enemy.mesh.position)) continue;
+          }
           if (enemy.gravitonControl) {
             enemy.gravitonControl = false;
             continue;
@@ -2806,8 +3672,9 @@
           const dist = tmpVec.length();
           if (dist > 0.01) {
             tmpVec.multiplyScalar(1 / dist);
-            enemy.velocity.x = tmpVec.x * enemy.speed;
-            enemy.velocity.z = tmpVec.z * enemy.speed;
+            const speed = enemy.speed * enemyOilSlowMultiplier(enemy);
+            enemy.velocity.x = tmpVec.x * speed;
+            enemy.velocity.z = tmpVec.z * speed;
             enemy.mesh.rotation.y = Math.atan2(tmpVec.x, tmpVec.z);
           }
           enemy.mesh.rotation.x *= Math.pow(0.001, dt);
@@ -2822,6 +3689,10 @@
 
         enemy.deathT += dt;
         if (enemy.impaledOn) {
+          if (enemy.type === "explosiveBug") {
+            const hits = enemy.explosiveFuseHits || 1;
+            updateExplosiveBugFlash(enemy, dt, 3.4 + hits * 2.8, 0.22 + hits * 0.13);
+          }
           animateEnemyLimbs(enemy, clock.elapsedTime, 2.2);
           if (typeof enemy.impaleTargetOffset === "number") {
             const dir = Math.sign(enemy.impaleTargetOffset - enemy.impaleOffset);
@@ -2975,6 +3846,10 @@
       updateOrbitalStrikes(dt);
       updateAirstrikes(dt);
       updateEnemies(dt);
+      updateDeployedMines(dt);
+      updateTeslaGenerators(dt);
+      updateChargedMetalItems(dt);
+      updateHazards(dt);
       updateParticles(dt);
       updateCamera(dt);
       updateHighlight();
