@@ -247,6 +247,8 @@
       position: new THREE.Vector3(0, 0, 0),
       velocity: new THREE.Vector3(),
       knockback: new THREE.Vector3(),
+      airOffset: 0,
+      airVelocity: 0,
       yaw: 0,
       moveYaw: 0,
       cameraYaw: 0,
@@ -607,6 +609,47 @@
       return group;
     }
 
+    function createRepulsorPadMesh() {
+      const group = new THREE.Group();
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.72, 0.82, 0.16, 18),
+        new THREE.MeshStandardMaterial({ color: 0x283235, roughness: 0.46, metalness: 0.55 })
+      );
+      base.castShadow = true;
+      base.receiveShadow = true;
+      group.add(base);
+
+      const emitter = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.46, 0.56, 0.055, 18),
+        new THREE.MeshBasicMaterial({ color: 0x7efcff, transparent: true, opacity: 0.78 })
+      );
+      emitter.position.y = 0.105;
+      group.userData.emitter = emitter;
+      group.add(emitter);
+
+      const arrow = new THREE.Mesh(
+        new THREE.ConeGeometry(0.13, 0.38, 12),
+        new THREE.MeshBasicMaterial({ color: 0xd9ffff, transparent: true, opacity: 0.86 })
+      );
+      arrow.position.y = 0.38;
+      group.add(arrow);
+
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.66, 0.025, 8, 36),
+        new THREE.MeshStandardMaterial({ color: 0xa8f7ff, emissive: 0x164b55, roughness: 0.28, metalness: 0.45 })
+      );
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.12;
+      group.add(rim);
+
+      const collider = new THREE.Mesh(
+        new THREE.SphereGeometry(1.0, 10, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      group.add(collider);
+      return group;
+    }
+
     function createOilDrumMesh() {
       const group = new THREE.Group();
       const drum = new THREE.Mesh(
@@ -951,6 +994,29 @@
           return dir.clone().normalize().multiplyScalar(10 + power * 12).add(new THREE.Vector3(0, 4.0 + power * 4.2, 0));
         },
       },
+      repulsorPad: {
+        label: "Repulsor pad",
+        groundOffset: 0.12,
+        throwGravity: 15,
+        createMesh: createRepulsorPadMesh,
+        holdPose(item, t) {
+          item.mesh.position.set(0.02, 0.58, -1.16);
+          item.mesh.rotation.set(0.12, t * 0.42, -0.12);
+        },
+        aimPose(item) {
+          item.mesh.position.set(0.02, 0.76, -1.34);
+          item.mesh.rotation.set(-0.18, 0.24, -0.06);
+        },
+        meleePose(item, progress) {
+          const p = smoothstep(progress);
+          item.mesh.position.set(0.04, 0.46 - p * 0.2, -1.0 - p * 0.95);
+          item.mesh.rotation.set(-0.08 + p * 0.7, 0.28 + p * 0.35, -0.12);
+        },
+        throwVelocity(dir) {
+          const power = arguments.length > 1 ? arguments[1] : 1;
+          return dir.clone().normalize().multiplyScalar(10 + power * 12).add(new THREE.Vector3(0, 4.0 + power * 4.0, 0));
+        },
+      },
       oilDrum: {
         label: "Oil drum",
         groundOffset: 0.44,
@@ -1207,6 +1273,8 @@
       ["gravitonBall", 20, 5],
       ["clusterMine", -2, 18],
       ["clusterMine", 24, -12],
+      ["repulsorPad", 9, 18],
+      ["repulsorPad", -25, 8],
       ["oilDrum", -16, 18],
       ["oilDrum", 22, 13],
       ["fireBomb", -22, 4],
@@ -1614,6 +1682,7 @@
       player.heldItem.state = "held";
       player.heldItem.deployedMine = false;
       player.heldItem.deployedTesla = false;
+      player.heldItem.deployedRepulsor = false;
       player.heldItem.mineTriggered = false;
       setPickupOutline(player.heldItem, false);
       mech.upperPitch.attach(player.heldItem.mesh);
@@ -1688,6 +1757,7 @@
       item.embeddedInPillar = false;
       item.deployedMine = false;
       item.deployedTesla = false;
+      item.deployedRepulsor = false;
       item.mineTriggered = false;
       item.state = "thrown";
       item.throwAge = 0;
@@ -2001,7 +2071,26 @@
       return mesh;
     }
 
-    function deployClusterMine(item) {
+    function pillarSideNormal(item, pillar) {
+      const normal = new THREE.Vector3(
+        item.mesh.position.x - pillar.mesh.position.x,
+        0,
+        item.mesh.position.z - pillar.mesh.position.z
+      );
+      if (normal.lengthSq() < 0.0001) normal.set(1, 0, 0);
+      return normal.normalize();
+    }
+
+    function placeItemOnPillarSurface(item, pillar, normal, offset = 0) {
+      item.mesh.position.x = pillar.mesh.position.x + normal.x * (pillar.radius + offset);
+      item.mesh.position.z = pillar.mesh.position.z + normal.z * (pillar.radius + offset);
+      item.mesh.position.y = clamp(item.mesh.position.y, pillar.mesh.position.y + 0.45, pillar.mesh.position.y + pillar.height - 0.25);
+      tmpQuat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+      item.mesh.quaternion.copy(tmpQuat);
+      item.embeddedInPillar = true;
+    }
+
+    function deployClusterMine(item, pillar = null) {
       const projectileIndex = projectiles.indexOf(item);
       if (projectileIndex >= 0) projectiles.splice(projectileIndex, 1);
       item.velocity.set(0, 0, 0);
@@ -2011,10 +2100,123 @@
       item.mineTriggered = false;
       item.mineTriggerT = 0;
       item.mineBlinkT = 0;
-      item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
-      item.mesh.rotation.set(0, Math.random() * TAU, 0);
+      if (pillar) {
+        placeItemOnPillarSurface(item, pillar, pillarSideNormal(item, pillar), item.def.groundOffset);
+      } else {
+        item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
+        item.mesh.rotation.set(0, Math.random() * TAU, 0);
+        item.embeddedInPillar = false;
+      }
       setPickupOutline(item, false);
       spawnImpact(item.mesh.position, 0xff4545, 8, 1.4);
+    }
+
+    function deployRepulsorPad(item, pillar = null) {
+      const projectileIndex = projectiles.indexOf(item);
+      if (projectileIndex >= 0) projectiles.splice(projectileIndex, 1);
+      item.velocity.set(0, 0, 0);
+      item.spin.set(0, 0, 0);
+      item.state = "free";
+      item.deployedRepulsor = true;
+      item.repulsorCooldownT = 0;
+      if (pillar) {
+        item.repulsorNormal = pillarSideNormal(item, pillar);
+        placeItemOnPillarSurface(item, pillar, item.repulsorNormal, item.def.groundOffset);
+      } else {
+        item.repulsorNormal = terrainNormalAt(item.mesh.position.x, item.mesh.position.z);
+        item.mesh.position.copy(new THREE.Vector3(
+          item.mesh.position.x,
+          heightAt(item.mesh.position.x, item.mesh.position.z),
+          item.mesh.position.z
+        ).addScaledVector(item.repulsorNormal, item.def.groundOffset));
+        item.embeddedInPillar = false;
+      }
+      tmpQuat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), item.repulsorNormal);
+      item.mesh.quaternion.copy(tmpQuat);
+      setPickupOutline(item, false);
+      spawnImpact(item.mesh.position, 0x7efcff, 12, 1.8);
+    }
+
+    function launchPickupFromRepulsor(item, direction, strength) {
+      if (item.state !== "free" || item === player.heldItem) return false;
+      item.deployedMine = false;
+      item.deployedTesla = false;
+      item.deployedRepulsor = false;
+      item.mineTriggered = false;
+      item.embeddedInPillar = false;
+      item.state = "thrown";
+      item.throwAge = 0;
+      item.launchOrigin = item.mesh.position.clone();
+      item.curveSide = item.type === "sawblade" ? -1 : item.curveSide;
+      item.sawFlatSpeed = item.type === "sawblade" ? Math.hypot(direction.x, direction.z) * strength : 0;
+      item.sawHeightOffset = item.type === "sawblade" ? 0.8 : 0;
+      item.velocity.copy(direction).multiplyScalar(strength);
+      item.spin.set((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 12);
+      if (!projectiles.includes(item)) projectiles.push(item);
+      scene.attach(item.mesh);
+      setPickupOutline(item, false);
+      return true;
+    }
+
+    function isInRepulsorTrigger(pad, targetPos, radius = 0.45) {
+      const direction = (pad.repulsorNormal || terrainNormalAt(pad.mesh.position.x, pad.mesh.position.z)).clone().normalize();
+      const offset = targetPos.clone().sub(pad.mesh.position);
+      const along = offset.dot(direction);
+      if (along < -0.35 || along > 1.65 + radius) return false;
+      offset.addScaledVector(direction, -along);
+      return offset.lengthSq() <= (1.15 + radius) * (1.15 + radius);
+    }
+
+    function boostThrownItemFromRepulsor(item, direction) {
+      if (item.state !== "thrown" || !item.velocity) return false;
+      const boost = item.type === "rock" || item.type === "oilDrum" ? 22 : 20;
+      item.velocity.addScaledVector(direction, boost);
+      item.spin.add(new THREE.Vector3(
+        (Math.random() - 0.5) * 7,
+        5 + Math.random() * 6,
+        (Math.random() - 0.5) * 7
+      ));
+      if (item.type === "sawblade") item.sawFlatSpeed = Math.max(item.sawFlatSpeed || 0, Math.hypot(item.velocity.x, item.velocity.z));
+      return true;
+    }
+
+    function triggerRepulsorPad(item) {
+      item.repulsorCooldownT = 0.5;
+      const direction = (item.repulsorNormal || terrainNormalAt(item.mesh.position.x, item.mesh.position.z)).clone().normalize();
+      const origin = item.mesh.position.clone();
+      const blastOrigin = origin.clone().addScaledVector(direction, 0.35);
+      const emitter = item.mesh.userData.emitter;
+      if (emitter && emitter.material) emitter.material.opacity = 1.0;
+      spawnImpact(blastOrigin, 0x9fffff, 34, 3.2);
+      spawnShockwave(blastOrigin, 3.6);
+      const launchedPickups = new Set();
+
+      for (const enemy of enemies) {
+        if (enemy.state !== "alive" || enemy.impaledOn) continue;
+        if (enemy.mesh.position.distanceTo(origin) > 1.55 + enemy.radius) continue;
+        tmpVec.copy(direction).multiplyScalar(enemy.type === "bluePillar" ? 22.5 : 27);
+        knockEnemy(enemy, tmpVec, 4.0);
+        enemy.repulsorAirborne = true;
+      }
+
+      if (player.position.distanceTo(origin) <= 1.8) {
+        player.knockback.x += direction.x * 30;
+        player.knockback.z += direction.z * 30;
+        player.airVelocity = Math.max(player.airVelocity || 0, Math.max(5, direction.y * 27));
+        player.airOffset = Math.max(player.airOffset || 0, 0.06);
+      }
+
+      for (const pickup of items) {
+        if (pickup === item || pickup.state !== "free" || pickup === player.heldItem) continue;
+        if (pickup.mesh.position.distanceTo(origin) > 1.7) continue;
+        if (launchPickupFromRepulsor(pickup, direction, pickup.type === "rock" ? 27 : 24)) launchedPickups.add(pickup);
+      }
+
+      for (const projectile of projectiles) {
+        if (projectile === item || projectile === player.heldItem || projectile.state !== "thrown" || launchedPickups.has(projectile)) continue;
+        if (!isInRepulsorTrigger(item, projectile.mesh.position, projectile.def.groundOffset || 0.45)) continue;
+        boostThrownItemFromRepulsor(projectile, direction);
+      }
     }
 
     function spawnMineBomblets(pos) {
@@ -2044,7 +2246,7 @@
       spawnImpact(item.mesh.position, 0xff2525, 10, 1.6);
     }
 
-    function deployTeslaGenerator(item) {
+    function deployTeslaGenerator(item, pillar = null) {
       const projectileIndex = projectiles.indexOf(item);
       if (projectileIndex >= 0) projectiles.splice(projectileIndex, 1);
       item.velocity.set(0, 0, 0);
@@ -2054,10 +2256,19 @@
       item.teslaPulseT = 0;
       item.teslaCooldowns = new Map();
       item.teslaRelayArcs = new Map();
-      item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
-      item.mesh.rotation.set(0, Math.random() * TAU, 0);
+      if (pillar) {
+        placeItemOnPillarSurface(item, pillar, pillarSideNormal(item, pillar), item.def.groundOffset);
+      } else {
+        item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
+        item.mesh.rotation.set(0, Math.random() * TAU, 0);
+        item.embeddedInPillar = false;
+      }
       setPickupOutline(item, false);
       spawnImpact(item.mesh.position, 0x85eaff, 14, 2.0);
+    }
+
+    function teslaGeneratorSourceWorld(item) {
+      return item.mesh.localToWorld(new THREE.Vector3(0, 0.82, 0));
     }
 
     function beamPommelWorld(item) {
@@ -2174,7 +2385,7 @@
         const relayArcTimes = generator.teslaRelayArcs || (generator.teslaRelayArcs = new Map());
         const sources = [{
           item: generator,
-          pos: generator.mesh.position.clone().add(new THREE.Vector3(0, 0.82, 0)),
+          pos: teslaGeneratorSourceWorld(generator),
           depth: 0,
         }];
         const linkedMetal = new Set();
@@ -2358,6 +2569,50 @@
             break;
           }
         }
+      }
+    }
+
+    function updateRepulsorPads(dt) {
+      for (const item of items) {
+        if (item.type !== "repulsorPad" || item.state !== "free" || !item.deployedRepulsor) continue;
+        item.repulsorCooldownT = Math.max(0, (item.repulsorCooldownT || 0) - dt);
+        const emitter = item.mesh.userData.emitter;
+        if (emitter && emitter.material) {
+          const readyPulse = item.repulsorCooldownT <= 0 ? 0.35 + Math.max(0, Math.sin(clock.elapsedTime * 5.5)) * 0.35 : 0.18;
+          emitter.material.opacity = emitter.material.opacity * Math.pow(0.04, dt) + readyPulse * (1 - Math.pow(0.04, dt));
+          emitter.scale.setScalar(item.repulsorCooldownT <= 0 ? 1.0 + readyPulse * 0.14 : 0.88);
+        }
+        if (item.repulsorCooldownT > 0) continue;
+
+        let shouldTrigger = player.position.distanceTo(item.mesh.position) <= 1.8;
+        if (!shouldTrigger) {
+          for (const enemy of enemies) {
+            if (enemy.state !== "alive" || enemy.impaledOn) continue;
+            if (enemy.mesh.position.distanceTo(item.mesh.position) <= 1.55 + enemy.radius) {
+              shouldTrigger = true;
+              break;
+            }
+          }
+        }
+        if (!shouldTrigger) {
+          for (const projectile of projectiles) {
+            if (projectile === item || projectile === player.heldItem || projectile.state !== "thrown") continue;
+            if (isInRepulsorTrigger(item, projectile.mesh.position, projectile.def.groundOffset || 0.45)) {
+              shouldTrigger = true;
+              break;
+            }
+          }
+        }
+        if (!shouldTrigger) {
+          for (const pickup of items) {
+            if (pickup === item || pickup.state !== "free" || pickup === player.heldItem) continue;
+            if (pickup.mesh.position.distanceTo(item.mesh.position) <= 1.7) {
+              shouldTrigger = true;
+              break;
+            }
+          }
+        }
+        if (shouldTrigger) triggerRepulsorPad(item);
       }
     }
 
@@ -2880,7 +3135,18 @@
     }
 
     function findPillarHit(item) {
-      if (item.type !== "beam" && item.type !== "bomb" && item.type !== "sawblade") return null;
+      if (
+        item.type !== "beam"
+        && item.type !== "bomb"
+        && item.type !== "sawblade"
+        && item.type !== "repulsorPad"
+        && item.type !== "clusterMine"
+        && item.type !== "teslaGenerator"
+        && item.type !== "rock"
+        && item.type !== "beacon"
+        && item.type !== "airstrikeBeacon"
+        && item.type !== "gravitonBall"
+      ) return null;
       const tip = item.type === "beam" ? javelinTipWorld(item) : item.mesh.position;
       for (const pillar of rockPillars) {
         const dx = tip.x - pillar.mesh.position.x;
@@ -2892,6 +3158,37 @@
         }
       }
       return null;
+    }
+
+    function knockItemOffPillar(item, pillar) {
+      const normal = pillarSideNormal(item, pillar);
+      placeItemOnPillarSurface(item, pillar, normal, 0.5);
+      const tangent = item.velocity.clone().addScaledVector(normal, -item.velocity.dot(normal));
+      item.velocity.copy(tangent.multiplyScalar(0.18)).addScaledVector(normal, 2.2);
+      item.velocity.y = Math.min(item.velocity.y, -2.5);
+      item.spin.add(new THREE.Vector3((Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7));
+      item.embeddedInPillar = false;
+      spawnImpact(item.mesh.position, 0xb8c3c7, item.type === "rock" ? 10 : 7, 1.8);
+    }
+
+    function reflectGravitonFromPillar(item, pillar) {
+      const normal = pillarSideNormal(item, pillar);
+      placeItemOnPillarSurface(item, pillar, normal, item.def.groundOffset + 0.5);
+      item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
+      const speed = Math.max(6, Math.hypot(item.velocity.x, item.velocity.z));
+      const dot = item.velocity.dot(normal);
+      if (dot < 0) item.velocity.addScaledVector(normal, -2 * dot);
+      if (Math.hypot(item.velocity.x, item.velocity.z) < 0.001) {
+        item.velocity.x = normal.x * speed;
+        item.velocity.z = normal.z * speed;
+      }
+      const flat = Math.hypot(item.velocity.x, item.velocity.z);
+      item.velocity.x *= speed / flat;
+      item.velocity.z *= speed / flat;
+      item.velocity.y = 0;
+      item.embeddedInPillar = false;
+      item.gravitonPillarBounceT = clock.elapsedTime;
+      spawnImpact(item.mesh.position, 0x9feaff, 18, 2.6);
     }
 
     function embedJavelinInPillar(item, pillar) {
@@ -3029,7 +3326,13 @@
       player.knockback.z *= Math.pow(0.045, dt);
       player.position.x = clamp(player.position.x, -68, 68);
       player.position.z = clamp(player.position.z, -68, 68);
-      player.position.y = heightAt(player.position.x, player.position.z);
+      const groundY = heightAt(player.position.x, player.position.z);
+      if (player.airOffset > 0 || player.airVelocity > 0) {
+        player.airVelocity -= 22 * dt;
+        player.airOffset = Math.max(0, player.airOffset + player.airVelocity * dt);
+        if (player.airOffset <= 0 && player.airVelocity < 0) player.airVelocity = 0;
+      }
+      player.position.y = groundY + player.airOffset;
 
       const normal = terrainNormalAt(player.position.x, player.position.z);
       mech.group.position.copy(player.position);
@@ -3400,6 +3703,10 @@
       item.mesh.position.x = clamp(item.mesh.position.x, -68, 68);
       item.mesh.position.z = clamp(item.mesh.position.z, -68, 68);
       item.mesh.position.y = heightAt(item.mesh.position.x, item.mesh.position.z) + item.def.groundOffset;
+      const pillarHit = findPillarHit(item);
+      if (pillarHit && clock.elapsedTime - (item.gravitonPillarBounceT || -100) > 0.12) {
+        reflectGravitonFromPillar(item, pillarHit);
+      }
       item.mesh.rotation.x += item.spin.x * dt + item.velocity.z * dt * 0.4;
       item.mesh.rotation.y += item.spin.y * dt;
       item.mesh.rotation.z += item.spin.z * dt - item.velocity.x * dt * 0.4;
@@ -3506,7 +3813,7 @@
         const hitRadius = item.type === "beam" ? 0.75 : 1.35;
         const impulse = item.velocity.clone().multiplyScalar(item.type === "beam" ? 0.75 : 0.55);
         const hitCenter = item.type === "beam" ? javelinTipWorld(item) : item.mesh.position;
-        const noGenericHit = item.type === "beacon" || item.type === "airstrikeBeacon" || item.type === "heldEnemy" || item.type === "clusterMine" || item.type === "oilDrum" || item.type === "fireBomb" || item.type === "teslaGenerator";
+        const noGenericHit = item.type === "beacon" || item.type === "airstrikeBeacon" || item.type === "heldEnemy" || item.type === "clusterMine" || item.type === "repulsorPad" || item.type === "oilDrum" || item.type === "fireBomb" || item.type === "teslaGenerator";
         const enemyHits = noGenericHit ? 0 : hitEnemies(hitCenter, item.type === "sawblade" ? 0.95 : hitRadius, impulse, item.type === "beam" ? item : null, { dismember: item.type === "sawblade" });
         if (item.type === "bomb" && enemyHits > 0) {
           explodeAt(item.mesh.position.clone(), 7.2, 24, false, item);
@@ -3520,6 +3827,14 @@
           } else if (item.type === "sawblade") {
             embedSawbladeInPillar(item, pillarHit);
             projectiles.splice(i, 1);
+          } else if (item.type === "repulsorPad") {
+            deployRepulsorPad(item, pillarHit);
+          } else if (item.type === "clusterMine") {
+            deployClusterMine(item, pillarHit);
+          } else if (item.type === "teslaGenerator") {
+            deployTeslaGenerator(item, pillarHit);
+          } else if (item.type === "rock" || item.type === "beacon" || item.type === "airstrikeBeacon") {
+            knockItemOffPillar(item, pillarHit);
           } else {
             embedJavelinInPillar(item, pillarHit);
             projectiles.splice(i, 1);
@@ -3552,6 +3867,11 @@
           if (item.type === "clusterMine") {
             item.mesh.position.y = groundY;
             deployClusterMine(item);
+            continue;
+          }
+          if (item.type === "repulsorPad") {
+            item.mesh.position.y = groundY;
+            deployRepulsorPad(item);
             continue;
           }
           if (item.type === "oilDrum") {
@@ -3657,6 +3977,22 @@
             continue;
           }
           animateEnemyLimbs(enemy, clock.elapsedTime, enemy.stunT > 0 ? 1.8 : 1);
+          if (enemy.repulsorAirborne) {
+            enemy.velocity.y -= 20 * dt;
+            enemy.mesh.position.addScaledVector(enemy.velocity, dt);
+            enemy.mesh.rotation.x += enemy.velocity.z * dt * 0.45;
+            enemy.mesh.rotation.z -= enemy.velocity.x * dt * 0.45;
+            const groundY = heightAt(enemy.mesh.position.x, enemy.mesh.position.z) + enemy.groundOffset;
+            if (enemy.mesh.position.y <= groundY) {
+              enemy.mesh.position.y = groundY;
+              enemy.velocity.y = 0;
+              enemy.repulsorAirborne = false;
+              enemy.stunT = 0;
+            } else {
+              enemy.stunT = Math.max(enemy.stunT || 0, 0.2);
+            }
+            continue;
+          }
           if (enemy.stunT > 0) {
             enemy.stunT = Math.max(0, enemy.stunT - dt);
             enemy.velocity.x *= Math.pow(0.08, dt);
@@ -3847,6 +4183,7 @@
       updateAirstrikes(dt);
       updateEnemies(dt);
       updateDeployedMines(dt);
+      updateRepulsorPads(dt);
       updateTeslaGenerators(dt);
       updateChargedMetalItems(dt);
       updateHazards(dt);
